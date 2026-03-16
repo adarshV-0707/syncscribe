@@ -13,7 +13,7 @@ import { upload } from "../middlewares/multer.middleware.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 
 
-const router = Router()
+const router  = Router()
 
 router.route("/register").post(
     upload.fields([
@@ -42,4 +42,4 @@ router.route("/update-account").patch(verifyJWT,updateAccountDetails)
 router.route("/avatar").patch(verifyJWT,upload.single("avatar"),updateUserAvatar)
 router.route("/profile/:username").get(verifyJWT,getUserProfile)
 
-export default router
+export default router;
