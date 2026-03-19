@@ -58,5 +58,46 @@ const getDocument = asyncHandler(async(req,res) => {
 })
 
 const getAllDocuments = asyncHandler(async(req,res) => {
+    const {username} = req.param;
+    if(!username){
+        throw new ApiError(401,"Username is missing")
+    }
+    const allDocument = await Document.aggregate([
+        {
+            $match:{
+                username: username?.toLowerCase()
+            },
+        },
+            {
+            $lookup:{
+                from:"documents",
+                localField:"users_id",
+                foreignField:"documents_id",
+                as:"documents"
+            }
+        },
+        {
+            $lookup: {
+                from: "documents",
+                localField: "users_id",
+                foreignField: "collaborator_id",
+                as: "documents"
+            }
+        },
+        {
+        $addFields:{
+            documents
+        }
+    },
+    {$project:{
+        documents:1
+
+    }
+}
+
+
+
     
+    
+    ])
 })
