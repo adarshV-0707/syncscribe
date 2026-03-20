@@ -58,46 +58,36 @@ const getDocument = asyncHandler(async(req,res) => {
 })
 
 const getAllDocuments = asyncHandler(async(req,res) => {
-    const {username} = req.param;
-    if(!username){
-        throw new ApiError(401,"Username is missing")
+    const {page = 1 , limit = 10 , search , status } = req.query
+    const pageNumber = Number(page) || 1;
+    const limitNumber = Number(limit) || 10;
+    const query = {
+        owner : req.user._id,
+        status: status && status !== "deleted" ? status : { $ne: "deleted" }
     }
-    const allDocument = await Document.aggregate([
-        {
-            $match:{
-                username: username?.toLowerCase()
-            },
-        },
-            {
-            $lookup:{
-                from:"documents",
-                localField:"users_id",
-                foreignField:"documents_id",
-                as:"documents"
-            }
-        },
-        {
-            $lookup: {
-                from: "documents",
-                localField: "users_id",
-                foreignField: "collaborator_id",
-                as: "documents"
-            }
-        },
-        {
-        $addFields:{
-            documents
-        }
-    },
-    {$project:{
-        documents:1
-
+    if(search){
+        query.title = {$regex:search,$options:"i"}
     }
-}
+    const [documents, total] = await Promise.all([
+    Document.find(query)
+        .sort({ updatedAt: -1 })
+        .skip((pageNumber - 1) * limitNumber)
+        .limit(limitNumber),
 
+    Document.countDocuments(query)
+    ]);
 
-
-    
-    
-    ])
-})
+    return res.status(200)
+    .json(
+        new ApiResponse(200,{
+            documents,
+            pagination:{
+                total,
+                page:pageNumber,
+                limit:limitNumber,
+                totalPages: Math.ceil(total/limitNumber)
+            }
+        },"Documents fetched successfully")
+    )
+        
+    })
