@@ -91,3 +91,58 @@ const getAllDocuments = asyncHandler(async(req,res) => {
     )
         
     })
+
+    const getSharedDocuments = asyncHandler(async (req, res) => {
+    const { page = 1, limit = 10 } = req.query;
+
+    const pageNumber = Number(page) || 1;
+    const limitNumber = Math.min(Number(limit) || 10, 50);
+    const collaborations = await Collaborator.find({
+        user: req.user._id
+    }).select("document");
+
+    const documentIds = collaborations.map(c => c.document);
+
+    if(documentIds.length === 0) {
+    return res.status(200).json(
+        new ApiResponse(200, {
+            documents: [],
+            pagination: { total: 0, page: pageNumber, limit: limitNumber, totalPages: 0 }
+        }, "No shared documents found")
+    )
+    }
+
+    const [documents, total] = await Promise.all([
+        Document.find({
+            _id: { $in: documentIds },
+            status: { $ne: "deleted" }
+        })
+        .populate("owner","name username avatar")   
+        .sort({ updatedAt: -1 })
+        .skip((pageNumber - 1) * limitNumber)
+        .limit(limitNumber)
+        .lean(),
+
+        Document.countDocuments({
+            _id: { $in: documentIds },
+            status: { $ne: "deleted" }
+        })
+    ]);
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            {
+                documents,
+                pagination: {
+                    total,
+                    page: pageNumber,
+                    limit: limitNumber,
+                    totalPages: Math.ceil(total / limitNumber)
+                }
+            },
+            "Shared Documents fetched successfully"
+        )
+    );
+});
+
