@@ -92,42 +92,39 @@ const getAllDocuments = asyncHandler(async(req,res) => {
         
     })
 
-    const getSharedDocuments = asyncHandler(async (req, res) => {
+ const getSharedDocuments = asyncHandler(async (req, res) => {
     const { page = 1, limit = 10 } = req.query;
 
     const pageNumber = Number(page) || 1;
     const limitNumber = Math.min(Number(limit) || 10, 50);
+
     const collaborations = await Collaborator.find({
         user: req.user._id
-    }).select("document");
+    }).select("document").lean();
 
     const documentIds = collaborations.map(c => c.document);
 
-    if(documentIds.length === 0) {
-    return res.status(200).json(
-        new ApiResponse(200, {
-            documents: [],
-            pagination: { total: 0, page: pageNumber, limit: limitNumber, totalPages: 0 }
-        }, "No shared documents found")
-    )
+    let documents = []
+    let total = 0
+
+    if(documentIds.length > 0) {
+        const documentQuery = {
+            _id: { $in: documentIds },
+            status: { $ne: "deleted" },
+            owner: {$ne:req.user._id}
+        }
+
+        ;[documents, total] = await Promise.all([
+            Document.find(documentQuery)
+            .populate("owner", "name username avatar")
+            .sort({ updatedAt: -1 })
+            .skip((pageNumber - 1) * limitNumber)
+            .limit(limitNumber)
+            .lean(),
+
+            Document.countDocuments(documentQuery)
+        ])
     }
-
-    const [documents, total] = await Promise.all([
-        Document.find({
-            _id: { $in: documentIds },
-            status: { $ne: "deleted" }
-        })
-        .populate("owner","name username avatar")   
-        .sort({ updatedAt: -1 })
-        .skip((pageNumber - 1) * limitNumber)
-        .limit(limitNumber)
-        .lean(),
-
-        Document.countDocuments({
-            _id: { $in: documentIds },
-            status: { $ne: "deleted" }
-        })
-    ]);
 
     return res.status(200).json(
         new ApiResponse(
@@ -141,8 +138,61 @@ const getAllDocuments = asyncHandler(async(req,res) => {
                     totalPages: Math.ceil(total / limitNumber)
                 }
             },
-            "Shared Documents fetched successfully"
+            documents.length === 0 ? "No shared documents found" : "Shared documents fetched successfully"
         )
+    )
+})
+
+const updateDocumentInfo = asyncHandler(async (req, res) => {
+    const { documentId } = req.params;
+    const [newTitle, newDescription] = [req.body.newTitle, req.body.newDescription].map(f => f?.trim());
+
+    if (!mongoose.Types.ObjectId.isValid(documentId)) {
+        throw new ApiError(400, "Invalid document ID");
+    }
+
+    if (!newTitle && !newDescription) {
+        throw new ApiError(400, "At least one field is required to update");
+    }
+
+    const document = await Document.findById(documentId);
+
+    if (!document) {
+        throw new ApiError(404, "Document not found");
+    }
+
+    if (document.status === "deleted") {
+        throw new ApiError(404, "Document not found");
+    }
+
+    const isOwner = document.owner.equals(req.user._id);
+    if (!isOwner) {
+        const isEditor = await Collaborator.exists({
+            document: documentId,
+            user: req.user._id,
+            role: { $in: ["editor", "leader"] }
+        });
+
+        if (!isEditor) {
+            throw new ApiError(403, "You are not authorized to update this document");
+        }
+    }
+
+    const updateFields = {};
+    if (newTitle) updateFields.title = newTitle;
+    if (newDescription) updateFields.description = newDescription;
+    updateFields.lastEditedBy = req.user._id;
+    updateFields.lastEditedAt = new Date();
+
+    const updatedDocument = await Document.findByIdAndUpdate(
+        documentId,
+        { $set: updateFields },
+        { new: true, runValidators: true }
+    )
+    .populate("owner", "name username avatar")
+    .populate("lastEditedBy", "name username avatar");
+
+    return res.status(200).json(
+        new ApiResponse(200, updatedDocument, "Document updated successfully")
     );
 });
-
