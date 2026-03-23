@@ -157,11 +157,7 @@ const updateDocumentInfo = asyncHandler(async (req, res) => {
 
     const document = await Document.findById(documentId);
 
-    if (!document) {
-        throw new ApiError(404, "Document not found");
-    }
-
-    if (document.status === "deleted") {
+    if (!document || document.status !== "active" ) {
         throw new ApiError(404, "Document not found");
     }
 
@@ -193,6 +189,88 @@ const updateDocumentInfo = asyncHandler(async (req, res) => {
     .populate("lastEditedBy", "name username avatar");
 
     return res.status(200).json(
-        new ApiResponse(200, updatedDocument, "Document updated successfully")
+        new ApiResponse(200, updatedDocument, "Document info updated successfully")
     );
 });
+
+const updateDocumentContent = asyncHandler(async (req, res) => {
+    const { documentId } = req.params;
+    const { content } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(documentId)) {
+        throw new ApiError(400, "Invalid document ID");
+    }
+
+    if (!content) {
+        throw new ApiError(400, "Content is required");
+    }
+
+    const document = await Document.findById(documentId);
+
+    if (!document || document.status !== "active") {
+        throw new ApiError(404, "Document not found");
+    }
+
+    const isOwner = document.owner.equals(req.user._id);
+    if (!isOwner) {
+        const isEditor = await Collaborator.exists({
+            document: documentId,
+            user: req.user._id,
+            role: { $in: ["editor"] }
+        });
+
+        if (!isEditor) {
+            throw new ApiError(403, "You are not authorized to update this document");
+        }
+    }
+
+    const updatedDocument = await Document.findByIdAndUpdate(
+        documentId,
+        {
+            $set: {
+                content,
+                lastEditedBy: req.user._id,
+                lastEditedAt: new Date(),
+            }
+        },
+        { new: true, runValidators: true }
+    )
+    .populate("owner", "name username avatar")
+    .populate("lastEditedBy", "name username avatar");
+
+    return res.status(200).json(
+        new ApiResponse(200, updatedDocument, "Document content updated successfully")
+    );
+});
+
+const deleteDocument = asyncHandler(async (req, res) => {
+    const { documentId } = req.params;
+
+    
+    if (!mongoose.Types.ObjectId.isValid(documentId)) {
+        throw new ApiError(400, "Invalid document ID");
+    }
+
+    const deletedDocument = await Document.findOneAndUpdate(
+        {
+            _id: documentId,
+            status: { $ne: "deleted" },
+            owner: req.user._id
+        },
+        {
+            $set: { status: "deleted" }
+        },
+        { new: true }
+    );
+
+    if (!deletedDocument) {
+        throw new ApiError(404, "Document not found or not authorized");
+    }
+
+    return res.status(200).json(
+        new ApiResponse(200, deletedDocument, "Document deleted successfully")
+    );
+});
+
+
+
