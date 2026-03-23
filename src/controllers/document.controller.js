@@ -272,5 +272,33 @@ const deleteDocument = asyncHandler(async (req, res) => {
     );
 });
 
+const restoreDocument = asyncHandler(async (req, res) => {
+    const { documentId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(documentId)) {
+        throw new ApiError(400, "Invalid document ID");
+    }
+
+    const restoredDocument = await Document.findOneAndUpdate(
+        {
+            _id: documentId,
+            status: { $in: ["deleted", "archived"] },
+            owner: req.user._id
+        },
+        {
+            $set: { status: "active" }
+        },
+        { new: true }
+    );
+
+    if (!restoredDocument) {
+        throw new ApiError(404, "Document not found or not authorized");
+    }
+
+    return res.status(200).json(
+        new ApiResponse(200, restoredDocument, "Document restored successfully")
+    );
+});
+
 
 
