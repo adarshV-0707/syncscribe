@@ -1,7 +1,9 @@
+import mongoose from 'mongoose'
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiError } from "../utils/apiError.js";
 import { ApiResponse } from "../utils/apiResponse.js";
 import { Document } from "../models/document.model.js";
+import { Collaborator } from "../models/collaborator.model.js"
 
 const createDocument = asyncHandler(async(req, res) => {
     const { title, description } = req.body
@@ -40,7 +42,7 @@ const getDocument = asyncHandler(async(req,res) => {
         document: documentId,
         user:req.user._id
     });
-    
+
     if(!collaborator){
         throw new ApiError(403,"User does not have access to this document")
     }
@@ -59,7 +61,7 @@ const getDocument = asyncHandler(async(req,res) => {
 const getAllDocuments = asyncHandler(async(req,res) => {
     const {page = 1 , limit = 10 , search , status } = req.query
     const pageNumber = Math.max(Number(page) || 1, 1)
-    const limitNumber = Number(limit) || 10;
+    const limitNumber = Math.min(Number(limit) || 10, 50);
     const query = {
         owner : req.user._id,
         status: status && status !== "deleted" ? status : { $ne: "deleted" }
@@ -164,7 +166,7 @@ const updateDocumentInfo = asyncHandler(async (req, res) => {
         const isEditor = await Collaborator.exists({
             document: documentId,
             user: req.user._id,
-            role: { $in: ["editor", "leader"] }
+            role: { $in: ["editor"] }
         });
 
         if (!isEditor) {
@@ -476,6 +478,22 @@ const searchDocument = asyncHandler(async (req, res) => {
         )
     )
 })
+
+export {
+    createDocument,
+    getDocument,
+    getAllDocuments,
+    getSharedDocuments,
+    updateDocumentInfo,
+    updateDocumentContent,
+    deleteDocument,
+    restoreDocument,
+    archiveDocument,
+    getArchivedDocuments,
+    getDeletedDocuments,
+    togglePublic,
+    searchDocument
+}
 
 
 
