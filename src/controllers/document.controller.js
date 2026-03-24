@@ -39,9 +39,8 @@ const getDocument = asyncHandler(async(req,res) => {
     const collaborator = await Collaborator.findOne({
         document: documentId,
         user:req.user._id
-    }
-
-    )
+    });
+    
     if(!collaborator){
         throw new ApiError(403,"User does not have access to this document")
     }
@@ -59,7 +58,7 @@ const getDocument = asyncHandler(async(req,res) => {
 
 const getAllDocuments = asyncHandler(async(req,res) => {
     const {page = 1 , limit = 10 , search , status } = req.query
-    const pageNumber = Number(page) || 1;
+    const pageNumber = Math.max(Number(page) || 1, 1)
     const limitNumber = Number(limit) || 10;
     const query = {
         owner : req.user._id,
@@ -72,7 +71,8 @@ const getAllDocuments = asyncHandler(async(req,res) => {
     Document.find(query)
         .sort({ updatedAt: -1 })
         .skip((pageNumber - 1) * limitNumber)
-        .limit(limitNumber),
+        .limit(limitNumber)
+        .lean(),
 
     Document.countDocuments(query)
     ]);
@@ -90,40 +90,38 @@ const getAllDocuments = asyncHandler(async(req,res) => {
         },"Documents fetched successfully")
     )
         
-    })
+})
 
  const getSharedDocuments = asyncHandler(async (req, res) => {
     const { page = 1, limit = 10 } = req.query;
 
-    const pageNumber = Number(page) || 1;
+    const pageNumber = Math.max(Number(page) || 1, 1)
     const limitNumber = Math.min(Number(limit) || 10, 50);
 
-    const collaborations = await Collaborator.find({
+    const documentIds = await Collaborator.distinct("document", {
         user: req.user._id
-    }).select("document").lean();
+    });
 
-    const documentIds = collaborations.map(c => c.document);
+    let documents = [];
+    let total = 0;
 
-    let documents = []
-    let total = 0
-
-    if(documentIds.length > 0) {
+    if (documentIds.length > 0) {
         const documentQuery = {
             _id: { $in: documentIds },
             status: { $ne: "deleted" },
-            owner: {$ne:req.user._id}
-        }
+            owner: { $ne: req.user._id }
+        };
 
-        ;[documents, total] = await Promise.all([
+        [documents, total] = await Promise.all([
             Document.find(documentQuery)
-            .populate("owner", "name username avatar")
-            .sort({ updatedAt: -1 })
-            .skip((pageNumber - 1) * limitNumber)
-            .limit(limitNumber)
-            .lean(),
+                .populate("owner", "name username avatar")
+                .sort({ updatedAt: -1 })
+                .skip((pageNumber - 1) * limitNumber)
+                .limit(limitNumber)
+                .lean(),
 
             Document.countDocuments(documentQuery)
-        ])
+        ]);
     }
 
     return res.status(200).json(
@@ -140,8 +138,8 @@ const getAllDocuments = asyncHandler(async(req,res) => {
             },
             documents.length === 0 ? "No shared documents found" : "Shared documents fetched successfully"
         )
-    )
-})
+    );
+});
 
 const updateDocumentInfo = asyncHandler(async (req, res) => {
     const { documentId } = req.params;
@@ -268,7 +266,7 @@ const deleteDocument = asyncHandler(async (req, res) => {
     }
 
     return res.status(200).json(
-        new ApiResponse(200, deletedDocument, "Document deleted successfully")
+        new ApiResponse(200, {} , "Document deleted successfully")
     );
 });
 
@@ -299,6 +297,187 @@ const restoreDocument = asyncHandler(async (req, res) => {
         new ApiResponse(200, restoredDocument, "Document restored successfully")
     );
 });
+
+const archiveDocument = asyncHandler(async (req, res) => {
+    const { documentId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(documentId)) {
+        throw new ApiError(400, "Invalid document ID");
+    }
+
+    const archivedDocument = await Document.findOneAndUpdate(
+        {
+            _id: documentId,
+            status: "active",
+            owner: req.user._id
+        },
+        {
+            $set: { status: "archived" }
+        },
+        { new: true }
+    );
+
+    if (!archivedDocument) {
+        throw new ApiError(404, "Document not found or not authorized");
+    }
+
+    return res.status(200).json(
+        new ApiResponse(200, archivedDocument, "Document archived successfully")
+    );
+});
+
+const getArchivedDocuments = asyncHandler(async (req, res) => {
+    const { page = 1, limit = 10 } = req.query;
+
+    const pageNumber = Math.max(Number(page) || 1, 1);
+    const limitNumber = Math.min(Number(limit) || 10, 50);
+
+    const query = {
+        owner: req.user._id,
+        status: "archived"
+    };
+
+    const [documents, total] = await Promise.all([
+        Document.find(query)
+            .sort({ updatedAt: -1 })
+            .skip((pageNumber - 1) * limitNumber)
+            .limit(limitNumber)
+            .lean(),
+        Document.countDocuments(query)
+    ]);
+
+    return res.status(200).json(
+        new ApiResponse(200, {
+            documents,
+            pagination: {
+                total,
+                page: pageNumber,
+                limit: limitNumber,
+                totalPages: Math.ceil(total / limitNumber)
+            }
+        }, total === 0 ? "No archived documents found" : "Archived documents fetched successfully")
+    );
+});
+
+const getDeletedDocuments = asyncHandler(async(req, res) => {
+    const { page = 1, limit = 10 } = req.query
+
+    const pageNumber = Math.max(Number(page) || 1, 1)
+    const limitNumber = Math.min(Number(limit) || 10, 50)
+
+    const query = {
+        owner: req.user._id,
+        status: "deleted"
+    }
+
+    const [documents, total] = await Promise.all([
+        Document.find(query)
+            .sort({ updatedAt: -1 })
+            .skip((pageNumber - 1) * limitNumber)
+            .limit(limitNumber)
+            .lean(),
+        Document.countDocuments(query)
+    ])
+
+    return res.status(200).json(
+        new ApiResponse(200, {
+            documents,
+            pagination: {
+                total,
+                page: pageNumber,
+                limit: limitNumber,
+                totalPages: Math.ceil(total / limitNumber)
+            }
+        }, total === 0 ? "No deleted documents found" : "Deleted documents fetched successfully")
+    )
+})
+
+const togglePublic = asyncHandler(async(req, res) => {
+    const { documentId } = req.params
+
+    if(!mongoose.Types.ObjectId.isValid(documentId)) {
+        throw new ApiError(400, "Invalid document ID")
+    }
+
+    const updatedDocument = await Document.findOneAndUpdate(
+        {
+            _id: documentId,
+            owner: req.user._id,
+            status: { $ne: "deleted" }
+        },
+        [
+            {
+                $set: {
+                    isPublic: { $not: "$isPublic" }
+                }
+            }
+        ],
+        { new: true }
+    )
+
+    if(!updatedDocument) {
+        throw new ApiError(404, "Document not found or not authorized")
+    }
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            updatedDocument,
+            `Document is now ${updatedDocument.isPublic ? "public" : "private"}`
+        )
+    )
+})
+
+const searchDocument = asyncHandler(async (req, res) => {
+    const { query, page = 1, limit = 10 } = req.query
+
+    if (!query?.trim()) {
+        throw new ApiError(400, "Search query is required")
+    }
+
+    const pageNumber = Math.max(Number(page) || 1, 1)
+    const limitNumber = Math.min(Number(limit) || 10, 50)
+
+    const sharedDocIds = await Collaborator.distinct("document", {
+        user: req.user._id
+    })
+
+    const searchQuery = {
+        status: { $ne: "deleted" },
+        $or: [
+            { owner: req.user._id },
+            { _id: { $in: sharedDocIds } }
+        ],
+        title: { $regex: query.trim(), $options: "i" }
+    }
+
+    const [documents, total] = await Promise.all([
+        Document.find(searchQuery)
+            .sort({ updatedAt: -1 })
+            .skip((pageNumber - 1) * limitNumber)
+            .limit(limitNumber)
+            .lean(),
+        Document.countDocuments(searchQuery)
+    ])
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            {
+                documents,
+                pagination: {
+                    total,
+                    page: pageNumber,
+                    limit: limitNumber,
+                    totalPages: Math.ceil(total / limitNumber)
+                }
+            },
+            total === 0 ? "No documents found" : "Documents fetched successfully"
+        )
+    )
+})
+
+
 
 
 
