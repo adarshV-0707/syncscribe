@@ -4,6 +4,8 @@ import { ApiError } from "../utils/apiError.js";
 import { ApiResponse } from "../utils/apiResponse.js";
 import { Document } from "../models/document.model.js";
 import { Collaborator } from "../models/collaborator.model.js"
+import { InviteLink } from "../models/inviteLink.model.js";
+import { Version } from "../models/version.model.js";
 
 const createDocument = asyncHandler(async(req, res) => {
     const { title, description } = req.body
@@ -14,66 +16,72 @@ const createDocument = asyncHandler(async(req, res) => {
         owner: req.user._id
     })
 
-    if(!document) {
-        throw new ApiError(500, "Something went wrong while creating document")
-    }
-
     return res
     .status(201)
     .json(new ApiResponse(201, document, "Document created successfully"))
 })
 
-const getDocument = asyncHandler(async(req,res) => {
-   const {documentId} = req.params
-   if(!mongoose.Types.ObjectId.isValid(documentId)) {
-    throw new ApiError(400, "Invalid document id")
-}
-   const document = await Document.findById(documentId)
-   
-   if(!document || document.status === "deleted"){
-    throw new ApiError(404,"Document not found")
-   }
-   const isOwner = document.owner.toString() === req.user._id.toString()
+const getDocument = asyncHandler(async (req, res) => {
+    const { documentId } = req.params;
 
-   const isPublic = document.isPublic
-
-   if(!isPublic && !isOwner){
-    const collaborator = await Collaborator.findOne({
-        document: documentId,
-        user:req.user._id
-    });
-
-    if(!collaborator){
-        throw new ApiError(403,"User does not have access to this document")
+    if (!mongoose.Types.ObjectId.isValid(documentId)) {
+        throw new ApiError(400, "Invalid document ID");
     }
-    }
-    await Document.populate(document, [
-    { path: "owner", select: "name username avatar" },
-    { path: "lastEditedBy", select: "name username avatar" }
-    ]);
-    
-    return res
-    .status(200)
-    .json(new ApiResponse(200,document,"Document fetched successfully")) 
 
-})
+    const document = await Document.findOne({
+        _id: documentId,
+        status: "active"
+    })
+    .populate("owner", "name username avatar")
+    .populate("lastEditedBy", "name username avatar");
+
+    if (!document) {
+        throw new ApiError(404, "Document not found");
+    }
+
+    const isOwner = document.owner._id.toString() === req.user._id.toString();
+
+    if (!document.isPublic && !isOwner) {
+        const collaborator = await Collaborator.findOne({
+            document: documentId,
+            user: req.user._id
+        });
+
+        if (!collaborator) {
+            throw new ApiError(403, "User does not have access to this document");
+        }
+
+        // Return collaborator role so frontend knows what user can do
+        return res.status(200).json(
+            new ApiResponse(200, { document, role: collaborator.role }, "Document fetched successfully")
+        );
+    }
+
+    const role = isOwner ? "owner" : "public"
+
+    return res.status(200).json(
+        new ApiResponse(200, { document, role }, "Document fetched successfully")
+    );
+});
 
 const getAllDocuments = asyncHandler(async(req,res) => {
-    const {page = 1 , limit = 10 , search , status } = req.query
+    const {page = 1 , limit = 10 , search  } = req.query
     const pageNumber = Math.max(Number(page) || 1, 1)
     const limitNumber = Math.min(Number(limit) || 10, 50);
     const query = {
         owner : req.user._id,
-        status: status && status !== "deleted" ? status : { $ne: "deleted" }
+        status: "active"
     }
-    if(search){
-        query.title = {$regex:search,$options:"i"}
+    const searchTerm = search?.trim();
+    if(searchTerm){
+        query.title = {$regex:searchTerm,$options:"i"}
     }
     const [documents, total] = await Promise.all([
     Document.find(query)
         .sort({ updatedAt: -1 })
         .skip((pageNumber - 1) * limitNumber)
         .limit(limitNumber)
+        .populate("owner", "name username avatar")
         .lean(),
 
     Document.countDocuments(query)
@@ -110,7 +118,7 @@ const getAllDocuments = asyncHandler(async(req,res) => {
     if (documentIds.length > 0) {
         const documentQuery = {
             _id: { $in: documentIds },
-            status: { $ne: "deleted" },
+            status: "active",
             owner: { $ne: req.user._id }
         };
 
@@ -170,7 +178,7 @@ const updateDocumentInfo = asyncHandler(async (req, res) => {
         });
 
         if (!isEditor) {
-            throw new ApiError(403, "You are not authorized to update this document");
+            throw new ApiError(403, "Viewers are not allowed to update the document");
         }
     }
 
@@ -201,7 +209,7 @@ const updateDocumentContent = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Invalid document ID");
     }
 
-    if (!content) {
+    if (!content?.trim()) {
         throw new ApiError(400, "Content is required");
     }
 
@@ -220,7 +228,7 @@ const updateDocumentContent = asyncHandler(async (req, res) => {
         });
 
         if (!isEditor) {
-            throw new ApiError(403, "You are not authorized to update this document");
+            throw new ApiError(403, "Viewers are not allowed to update the document");
         }
     }
 
@@ -405,7 +413,7 @@ const togglePublic = asyncHandler(async(req, res) => {
         {
             _id: documentId,
             owner: req.user._id,
-            status: { $ne: "deleted" }
+            status: "active"
         },
         [
             {
@@ -445,7 +453,7 @@ const searchDocument = asyncHandler(async (req, res) => {
     })
 
     const searchQuery = {
-        status: { $ne: "deleted" },
+        status: "active",
         $or: [
             { owner: req.user._id },
             { _id: { $in: sharedDocIds } }
@@ -479,6 +487,51 @@ const searchDocument = asyncHandler(async (req, res) => {
     )
 })
 
+const permanentDeleteDocument = asyncHandler(async (req, res) => {
+    const { documentId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(documentId)) {
+        throw new ApiError(400, "Invalid document ID");
+    }
+
+    const session = await mongoose.startSession();
+
+    try {
+        session.startTransaction();
+
+        const document = await Document.findOneAndDelete(
+            {
+                _id: documentId,
+                owner: req.user._id,
+                status: "deleted"
+            },
+            { session }
+        );
+
+        if (!document) {
+            throw new ApiError(404, "Document not found or not authorized for permanent deletion");
+        }
+
+        await Promise.all([
+            Collaborator.deleteMany({ document: documentId }, { session }),
+            InviteLink.deleteMany({ document: documentId }, { session }),
+            Version.deleteMany({ document: documentId }, { session }),
+        ]);
+
+        await session.commitTransaction();
+
+        return res.status(200).json(
+            new ApiResponse(200, {}, "Document permanently deleted successfully")
+        );
+
+    } catch (err) {
+        await session.abortTransaction();
+        throw err;
+    } finally {
+        session.endSession();
+    }
+});
+
 export {
     createDocument,
     getDocument,
@@ -492,7 +545,8 @@ export {
     getArchivedDocuments,
     getDeletedDocuments,
     togglePublic,
-    searchDocument
+    searchDocument,
+    permanentDeleteDocument
 }
 
 
