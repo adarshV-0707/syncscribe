@@ -4,6 +4,8 @@ import cookieParser from 'cookie-parser'
 import helmet from 'helmet'
 import morgan from 'morgan'
 import userRouter from './routes/user.routes.js'
+import documentRouter from './routes/document.routes.js'
+
 
 
 
@@ -24,6 +26,7 @@ app.use(cookieParser())
 
 
 app.use("/api/v1/users",userRouter)
+app.use("/api/v1/documents", documentRouter)
 
 app.use((err, req, res, next) => {
     const statusCode = err.statusCode || 500
