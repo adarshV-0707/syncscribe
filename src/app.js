@@ -6,9 +6,6 @@ import morgan from 'morgan'
 import userRouter from './routes/user.routes.js'
 import documentRouter from './routes/document.routes.js'
 
-
-
-
 const app = express()
 
 app.use(helmet())
@@ -18,17 +15,26 @@ app.use(cors({
     credentials: true
 }))
 
-app.use(express.json({limit: "16kb"}))
-app.use(express.urlencoded({extended:true,limit:'16kb'}))
+app.use(express.json({ limit: "16kb" }))
+app.use(express.urlencoded({ extended: true, limit: '16kb' }))
 app.use(express.static("public"))
 app.use(cookieParser())
 
-
-
-app.use("/api/v1/users",userRouter)
+app.use("/api/v1/users", userRouter)
 app.use("/api/v1/documents", documentRouter)
 
 app.use((err, req, res, next) => {
+    // ✅ Handle invalid MongoDB ID format globally
+    if(err.name === "CastError") {
+        return res.status(400).json({
+            success: false,
+            statusCode: 400,
+            message: "Invalid ID format",
+            errors: [],
+            data: null
+        })
+    }
+
     const statusCode = err.statusCode || 500
     const message = err.message || "Something went wrong"
 
@@ -41,5 +47,4 @@ app.use((err, req, res, next) => {
     })
 })
 
-export {app}
-
+export { app }
