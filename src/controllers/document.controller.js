@@ -23,11 +23,7 @@ const createDocument = asyncHandler(async(req, res) => {
 
 const getDocument = asyncHandler(async (req, res) => {
     const { documentId } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(documentId)) {
-        throw new ApiError(400, "Invalid document ID");
-    }
-
+    
     const document = await Document.findOne({
         _id: documentId,
         status: "active"
@@ -155,10 +151,6 @@ const updateDocumentInfo = asyncHandler(async (req, res) => {
     const { documentId } = req.params;
     const [newTitle, newDescription] = [req.body.newTitle, req.body.newDescription].map(f => f?.trim());
 
-    if (!mongoose.Types.ObjectId.isValid(documentId)) {
-        throw new ApiError(400, "Invalid document ID");
-    }
-
     if (!newTitle && !newDescription) {
         throw new ApiError(400, "At least one field is required to update");
     }
@@ -205,10 +197,6 @@ const updateDocumentContent = asyncHandler(async (req, res) => {
     const { documentId } = req.params;
     const { content } = req.body;
 
-    if (!mongoose.Types.ObjectId.isValid(documentId)) {
-        throw new ApiError(400, "Invalid document ID");
-    }
-
     if (!content?.trim()) {
         throw new ApiError(400, "Content is required");
     }
@@ -254,10 +242,6 @@ const updateDocumentContent = asyncHandler(async (req, res) => {
 const deleteDocument = asyncHandler(async (req, res) => {
     const { documentId } = req.params;
 
-    
-    if (!mongoose.Types.ObjectId.isValid(documentId)) {
-        throw new ApiError(400, "Invalid document ID");
-    }
 
     const deletedDocument = await Document.findOneAndUpdate(
         {
@@ -283,10 +267,6 @@ const deleteDocument = asyncHandler(async (req, res) => {
 const restoreDocument = asyncHandler(async (req, res) => {
     const { documentId } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(documentId)) {
-        throw new ApiError(400, "Invalid document ID");
-    }
-
     const restoredDocument = await Document.findOneAndUpdate(
         {
             _id: documentId,
@@ -310,10 +290,6 @@ const restoreDocument = asyncHandler(async (req, res) => {
 
 const archiveDocument = asyncHandler(async (req, res) => {
     const { documentId } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(documentId)) {
-        throw new ApiError(400, "Invalid document ID");
-    }
 
     const archivedDocument = await Document.findOneAndUpdate(
         {
@@ -403,11 +379,7 @@ const getDeletedDocuments = asyncHandler(async(req, res) => {
 })
 
 const togglePublic = asyncHandler(async(req, res) => {
-    const { documentId } = req.params
-
-    if(!mongoose.Types.ObjectId.isValid(documentId)) {
-        throw new ApiError(400, "Invalid document ID")
-    }
+    const { documentId } = req.params;
 
     const updatedDocument = await Document.findOneAndUpdate(
         {
@@ -489,10 +461,6 @@ const searchDocument = asyncHandler(async (req, res) => {
 
 const permanentDeleteDocument = asyncHandler(async (req, res) => {
     const { documentId } = req.params;
-
-    if (!mongoose.Types.ObjectId.isValid(documentId)) {
-        throw new ApiError(400, "Invalid document ID");
-    }
 
     const session = await mongoose.startSession();
 
