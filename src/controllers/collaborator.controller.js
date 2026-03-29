@@ -71,3 +71,30 @@ const addCollaborator = asyncHandler(async(req, res) => {
         throw error
     }
 })
+
+const removeCollaborator = asyncHandler(async(req, res) => {
+    const { documentId, collaboratorId } = req.params
+
+    const document = await Document.findOne({
+        _id: documentId,
+        status: "active",
+        owner: req.user._id
+    })
+
+    if(!document) {
+        throw new ApiError(404, "Document not found or not authorized")
+    }
+
+    const collaborator = await Collaborator.findOneAndDelete({
+        _id: collaboratorId,
+        document: documentId
+    })
+
+    if(!collaborator) {
+        throw new ApiError(404, "Collaborator not found")
+    }
+
+    return res.status(200).json(
+        new ApiResponse(200, {}, "Collaborator removed successfully")
+    )
+})
