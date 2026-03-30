@@ -9,9 +9,6 @@ import { User } from '../models/user.model.js';
 const addCollaborator = asyncHandler(async(req, res) => {
     const { documentId } = req.params
     let { email, username, role } = req.body;
-    if(!mongoose.Types.ObjectId.isValid(documentId)) {
-        throw new ApiError(400, "Invalid document ID")
-    }
     email = email?.trim().toLowerCase();
     username = username?.trim().toLowerCase(); 
 
