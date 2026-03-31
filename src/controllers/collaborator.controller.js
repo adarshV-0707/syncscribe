@@ -95,3 +95,43 @@ const removeCollaborator = asyncHandler(async(req, res) => {
         new ApiResponse(200, {}, "Collaborator removed successfully")
     )
 })
+
+const getCollaborators = asyncHandler(async(req, res) => {
+    const { documentId } = req.params
+
+    const document = await Document.findOne({
+        _id: documentId,
+        status: "active"
+    })
+
+    if(!document) {
+        throw new ApiError(404, "Document not found")
+    }
+
+    const isOwner = document.owner.equals(req.user._id)
+
+    if(!isOwner) {
+        const isCollaborator = await Collaborator.exists({
+            document: documentId,
+            user: req.user._id
+        })
+
+        if(!isCollaborator) {
+            throw new ApiError(403, "You do not have access to this document")
+        }
+    }
+
+    const collaborators = await Collaborator.find({
+        document: documentId
+    })
+    .populate("user", "name username avatar")
+    .populate("invitedBy", "name username avatar")
+
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            collaborators,
+            collaborators.length === 0 ? "No collaborators found" : "Collaborators fetched successfully"
+        )
+    )
+})
