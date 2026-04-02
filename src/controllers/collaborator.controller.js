@@ -135,3 +135,88 @@ const getCollaborators = asyncHandler(async(req, res) => {
         )
     )
 })
+
+const leaveDocument = asyncHandler(async(req, res) => {
+    const { documentId } = req.params
+
+    const collaborator = await Collaborator.findOneAndDelete({
+        document: documentId,
+        user: req.user._id
+    })
+
+    if(!collaborator) {
+        throw new ApiError(404, "You are not a collaborator of this document")
+    }
+
+    return res.status(200).json(
+        new ApiResponse(200, {}, "You have left the document successfully")
+    )
+})
+
+const transferOwnership = asyncHandler(async(req, res) => {
+    const { documentId } = req.params
+    const { userId } = req.body
+
+    const session = await mongoose.startSession()
+
+    try {
+        session.startTransaction()
+
+        const [document, collaborator] = await Promise.all([
+            Document.findOne({
+                _id: documentId,
+                status: "active",
+                owner: req.user._id
+            }).session(session),
+
+            Collaborator.findOne({
+                document: documentId,
+                user: userId
+            }).session(session)
+        ])
+
+        if(!document) {
+            throw new ApiError(404, "Document not found or not authorized")
+        }
+
+        if(!collaborator) {
+            throw new ApiError(400, "New owner must be an existing collaborator")
+        }
+
+        if(userId === req.user._id.toString()) {
+            throw new ApiError(400, "You are already the owner")
+        }
+
+        await Promise.all([
+            Document.updateOne(
+                { _id: documentId },
+                { $set: { owner: userId } },
+                { session }
+            ),
+
+            Collaborator.deleteOne(
+                { document: documentId, user: userId },
+                { session }
+            ),
+
+            Collaborator.create([{
+                document: documentId,
+                user: req.user._id,
+                role: "editor",
+                invitedBy: req.user._id
+            }], { session })
+        ])
+
+        await session.commitTransaction()
+
+        return res.status(200).json(
+            new ApiResponse(200, {}, "Ownership transferred successfully")
+        )
+
+    } catch(error) {
+        await session.abortTransaction()
+        throw error
+    } finally {
+        session.endSession()
+    }
+})
