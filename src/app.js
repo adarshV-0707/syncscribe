@@ -5,6 +5,8 @@ import helmet from 'helmet'
 import morgan from 'morgan'
 import userRouter from './routes/user.routes.js'
 import documentRouter from './routes/document.routes.js'
+import collaboratorRouter from './routes/collaborator.routes.js'
+
 
 const app = express()
 
@@ -22,6 +24,7 @@ app.use(cookieParser())
 
 app.use("/api/v1/users", userRouter)
 app.use("/api/v1/documents", documentRouter)
+app.use("/api/v1/documents", collaboratorRouter)
 
 app.use((err, req, res, next) => {
     // ✅ Handle invalid MongoDB ID format globally
