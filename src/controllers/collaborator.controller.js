@@ -153,6 +153,46 @@ const leaveDocument = asyncHandler(async(req, res) => {
     )
 })
 
+const updateCollaboratorRole = asyncHandler(async(req, res) => {
+    const { documentId, userId } = req.params
+    const { newRole } = req.body
+
+    if(!["editor", "viewer"].includes(newRole)) {
+        throw new ApiError(400, "Invalid role. Must be editor or viewer")
+    }
+
+    const document = await Document.findOne({
+        _id: documentId,
+        status: "active",
+        owner: req.user._id
+    })
+
+    if(!document) {
+        throw new ApiError(404, "Document not found or not authorized")
+    }
+
+    const collaborator = await Collaborator.findOneAndUpdate(
+        {
+            document: documentId,
+            user: userId
+        },
+        {
+            $set: { role: newRole }
+        },
+        { new: true }
+    )
+    .populate("user", "name username avatar")
+    .populate("invitedBy", "name username avatar")
+
+    if(!collaborator) {
+        throw new ApiError(404, "Collaborator not found")
+    }
+
+    return res.status(200).json(
+        new ApiResponse(200, collaborator, "Collaborator role updated successfully")
+    )
+})
+
 const transferOwnership = asyncHandler(async(req, res) => {
     const { documentId } = req.params
     const { userId } = req.body
@@ -220,3 +260,12 @@ const transferOwnership = asyncHandler(async(req, res) => {
         session.endSession()
     }
 })
+
+export {
+    addCollaborator,
+    removeCollaborator,
+    getCollaborators,
+    leaveDocument,
+    updateCollaboratorRole,
+    transferOwnership
+}
