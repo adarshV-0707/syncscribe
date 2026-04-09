@@ -3,7 +3,7 @@ import mongoose from "mongoose"
 import { asyncHandler } from "../utils/asyncHandler.js"
 import { ApiError } from "../utils/ApiError.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
-import { InviteLink } from "../models/inviteLink.model.js"
+import { InviteLink } from "../models/invite_link.model.js"
 import { Document } from "../models/document.model.js"
 import { Collaborator } from "../models/collaborator.model.js"
 
@@ -283,7 +283,7 @@ const joinViaInviteLink = asyncHandler(async (req, res) => {
     }
 
     return res.status(200).json(
-        new ApiResponse(200, { documentId, role: inviteLink.role }, "Successfully joined the document")
+        new ApiResponse(200, { documentId, role: claimed.role }, "Successfully joined the document")
     )
 })
 
