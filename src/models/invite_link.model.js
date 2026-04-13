@@ -7,10 +7,9 @@ const inviteLinkSchema = new Schema(
             ref: "Document",
             required: true
         },
-        token: {
+        tokenHash: {
             type: String,
             required: true,
-            unique: true
         },
         role: {
             type: String,
@@ -46,7 +45,7 @@ const inviteLinkSchema = new Schema(
 )
 
 // ✅ Token lookup — every join hits this
-inviteLinkSchema.index({ token: 1 })
+inviteLinkSchema.index({ tokenHash: 1 })
 
 // ✅ Document + active — owner managing links
 inviteLinkSchema.index({ document: 1, isActive: 1 })

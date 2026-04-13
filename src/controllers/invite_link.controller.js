@@ -123,7 +123,7 @@ const revokeInviteLink = asyncHandler(async (req, res) => {
     if (!inviteLink) throw new ApiError(404, "Active invite link not found")
 
     return res.status(200).json(
-        new ApiResponse(200, null, "Invite link revoked successfully")
+        new ApiResponse(200, null , "Invite link revoked successfully")
     )
 })
 
@@ -249,7 +249,7 @@ const joinViaInviteLink = asyncHandler(async (req, res) => {
                 }
 
                 await Collaborator.create(
-                    [{ document: documentId, user: userId, role: inviteLink.role, invitedBy: inviteLink.createdBy }],
+                    [{ document: documentId, user: userId, role: claimed.role, invitedBy: inviteLink.createdBy }],
                     { session }
                 )
 
