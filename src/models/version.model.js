@@ -8,26 +8,39 @@ const versionSchema = new Schema(
             type: Schema.Types.ObjectId,
             ref: "Document",
             required: [true, "Document reference is required"],
-            // No index: true — compound index below covers documentId-only queries
         },
-
         versionNumber: {
             type: Number,
             required: [true, "Version number is required"],
             min: [1, "Version number must be at least 1"],
         },
-
-        message: {
+        label: { // Used as the 'label' in your controller
             type: String,
             trim: true,
             maxlength: [500, "Version message cannot exceed 500 characters"],
             default: null,
         },
-
+        
+        // ─── NEW: Delta/Diff Architecture Fields ───
+        type: {
+            type: String,
+            enum: ["snapshot", "diff"],
+            required: [true, "Version type is required"]
+        },
         content: {
             type: String,
-            required: [true, "Content snapshot is required"],
+            // Not required anymore, because 'diff' versions won't have this
         },
+        delta: {
+            type: String, 
+            // Stores the patch string from the 'diff' library
+        },
+        snapshotRef: {
+            type: Schema.Types.ObjectId,
+            ref: "Version",
+            // Points to the base snapshot this delta applies to
+        },
+        // ───────────────────────────────────────────
 
         createdBy: {
             type: Schema.Types.ObjectId,
@@ -46,6 +59,7 @@ const versionSchema = new Schema(
 // Leading field (documentId) handles all document-scoped queries
 // unique enforces no duplicate versionNumber per document at DB level
 versionSchema.index({ documentId: 1, versionNumber: 1 }, { unique: true });
+versionSchema.index({ documentId: 1, type: 1, versionNumber: -1 });
 
 
 // ─── Immutability Guard ───────────────────────────────────────────────────────
