@@ -131,3 +131,37 @@ const createVersion = asyncHandler(async (req, res) => {
         new ApiResponse(201, responseData, "Version saved successfully")
     )
 })
+
+const listVersions = asyncHandler(async (req, res) => {
+    const { documentId } = req.params
+    const userId = req.user._id
+
+    await assertDocumentAccess(documentId, userId)
+
+    const page  = Math.max(parseInt(req.query.page)  || 1,  1)
+    const limit = Math.min(parseInt(req.query.limit)  || 20, 50)
+    const skip  = (page - 1) * limit
+
+    const [versions, total] = await Promise.all([
+        Version.find({ documentId })
+            .select("-content -delta -snapshotRef")
+            .sort({ versionNumber: -1 })
+            .skip(skip)
+            .limit(limit)
+            .populate("createdBy", "name username")
+            .lean(),
+        Version.countDocuments({ documentId })
+    ])
+    return res.status(200).json(
+        new ApiResponse(200, {
+            versions,
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages: Math.ceil(total / limit),
+                hasNext: page * limit < total
+            }
+        }, "Version history fetched successfully")
+    )
+})
