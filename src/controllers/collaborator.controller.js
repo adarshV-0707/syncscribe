@@ -1,271 +1,287 @@
-import mongoose from 'mongoose'
-import { asyncHandler } from "../utils/asyncHandler.js";
-import { ApiError } from "../utils/apiError.js";
-import { ApiResponse } from "../utils/apiResponse.js";
+import mongoose from "mongoose";
+import { asyncHandler } from "../utils/AsyncHandler.js";
+import { ApiError } from "../utils/ApiError.js";
+import { ApiResponse } from "../utils/ApiResponse.js";
 import { Document } from "../models/document.model.js";
-import { Collaborator } from "../models/collaborator.model.js"
-import { User } from '../models/user.model.js';
+import { Collaborator } from "../models/collaborator.model.js";
+import { User } from "../models/user.model.js";
 
-const addCollaborator = asyncHandler(async(req, res) => {
-    const { documentId } = req.params
-    let { email, username, role } = req.body;
-    email = email?.trim().toLowerCase();
-    username = username?.trim().toLowerCase(); 
+const addCollaborator = asyncHandler(async (req, res) => {
+  const { documentId } = req.params;
+  let { email, username, role } = req.body;
+  email = email?.trim().toLowerCase();
+  username = username?.trim().toLowerCase();
 
-    if(!email && !username) {
-        throw new ApiError(400, "Email or username is required")
+  if (!email && !username) {
+    throw new ApiError(400, "Email or username is required");
+  }
+
+  if (!["editor", "viewer"].includes(role)) {
+    throw new ApiError(400, "Invalid role. Must be editor or viewer");
+  }
+
+  const searchQuery = [];
+  if (username) searchQuery.push({ username });
+  if (email) searchQuery.push({ email });
+
+  const [document, user] = await Promise.all([
+    Document.findOne({
+      _id: documentId,
+      status: "active",
+      owner: req.user._id,
+    }),
+    User.findOne({ $or: searchQuery }),
+  ]);
+
+  if (!document) {
+    throw new ApiError(404, "Document not found or not authorized");
+  }
+
+  if (!user) {
+    throw new ApiError(404, "User not found");
+  }
+
+  if (user._id.equals(document.owner)) {
+    throw new ApiError(400, "Owner cannot be added as collaborator");
+  }
+
+  try {
+    const collaborator = await Collaborator.create({
+      document: documentId,
+      user: user._id,
+      role,
+      invitedBy: req.user._id,
+    });
+
+    await collaborator.populate([
+      { path: "user", select: "name username avatar" },
+      { path: "invitedBy", select: "name username avatar" },
+    ]);
+
+    return res
+      .status(201)
+      .json(
+        new ApiResponse(201, collaborator, "Collaborator added successfully"),
+      );
+  } catch (error) {
+    if (error.code === 11000) {
+      throw new ApiError(409, "User is already a collaborator");
     }
+    throw error;
+  }
+});
 
-    if(!["editor", "viewer"].includes(role)) {
-        throw new ApiError(400, "Invalid role. Must be editor or viewer")
+const removeCollaborator = asyncHandler(async (req, res) => {
+  const { documentId, collaboratorId } = req.params;
+
+  const document = await Document.findOne({
+    _id: documentId,
+    status: "active",
+    owner: req.user._id,
+  });
+
+  if (!document) {
+    throw new ApiError(404, "Document not found or not authorized");
+  }
+
+  const collaborator = await Collaborator.findOneAndDelete({
+    _id: collaboratorId,
+    document: documentId,
+  });
+
+  if (!collaborator) {
+    throw new ApiError(404, "Collaborator not found");
+  }
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Collaborator removed successfully"));
+});
+
+const getCollaborators = asyncHandler(async (req, res) => {
+  const { documentId } = req.params;
+
+  const document = await Document.findOne({
+    _id: documentId,
+    status: "active",
+  });
+
+  if (!document) {
+    throw new ApiError(404, "Document not found");
+  }
+
+  const isOwner = document.owner.equals(req.user._id);
+
+  if (!isOwner) {
+    const isCollaborator = await Collaborator.exists({
+      document: documentId,
+      user: req.user._id,
+    });
+
+    if (!isCollaborator) {
+      throw new ApiError(403, "You do not have access to this document");
     }
+  }
 
-    const searchQuery = []
-    if(username) searchQuery.push({ username })
-    if(email) searchQuery.push({ email })
+  const collaborators = await Collaborator.find({
+    document: documentId,
+  })
+    .populate("user", "name username avatar")
+    .populate("invitedBy", "name username avatar");
 
-    const [document, user] = await Promise.all([
-        Document.findOne({
-            _id: documentId,
-            status: "active",
-            owner: req.user._id
-        }),
-        User.findOne({ $or: searchQuery })
-    ])
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        collaborators,
+        collaborators.length === 0
+          ? "No collaborators found"
+          : "Collaborators fetched successfully",
+      ),
+    );
+});
 
-    if(!document) {
-        throw new ApiError(404, "Document not found or not authorized")
-    }
+const leaveDocument = asyncHandler(async (req, res) => {
+  const { documentId } = req.params;
 
-    if(!user) {
-        throw new ApiError(404, "User not found")
-    }
+  const collaborator = await Collaborator.findOneAndDelete({
+    document: documentId,
+    user: req.user._id,
+  });
 
-    if(user._id.equals(document.owner)) {
-        throw new ApiError(400, "Owner cannot be added as collaborator")
-    }
+  if (!collaborator) {
+    throw new ApiError(404, "You are not a collaborator of this document");
+  }
 
-    try {
-        const collaborator = await Collaborator.create({
-            document: documentId,
-            user: user._id,
-            role,
-            invitedBy: req.user._id
-        })
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "You have left the document successfully"));
+});
 
-        await collaborator.populate([
-            { path: "user", select: "name username avatar" },
-            { path: "invitedBy", select: "name username avatar" }
-        ])
+const updateCollaboratorRole = asyncHandler(async (req, res) => {
+  const { documentId, userId } = req.params;
+  const { newRole } = req.body;
 
-        return res.status(201).json(
-            new ApiResponse(201, collaborator, "Collaborator added successfully")
-        )
-    } catch(error) {
-        if(error.code === 11000) {
-            throw new ApiError(409, "User is already a collaborator")
-        }
-        throw error
-    }
-})
+  if (!["editor", "viewer"].includes(newRole)) {
+    throw new ApiError(400, "Invalid role. Must be editor or viewer");
+  }
 
-const removeCollaborator = asyncHandler(async(req, res) => {
-    const { documentId, collaboratorId } = req.params
+  const document = await Document.findOne({
+    _id: documentId,
+    status: "active",
+    owner: req.user._id,
+  });
 
-    const document = await Document.findOne({
+  if (!document) {
+    throw new ApiError(404, "Document not found or not authorized");
+  }
+
+  const collaborator = await Collaborator.findOneAndUpdate(
+    {
+      document: documentId,
+      user: userId,
+    },
+    {
+      $set: { role: newRole },
+    },
+    { new: true },
+  )
+    .populate("user", "name username avatar")
+    .populate("invitedBy", "name username avatar");
+
+  if (!collaborator) {
+    throw new ApiError(404, "Collaborator not found");
+  }
+
+  return res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        collaborator,
+        "Collaborator role updated successfully",
+      ),
+    );
+});
+
+const transferOwnership = asyncHandler(async (req, res) => {
+  const { documentId } = req.params;
+  const { userId } = req.body;
+
+  const session = await mongoose.startSession();
+
+  try {
+    session.startTransaction();
+
+    const [document, collaborator] = await Promise.all([
+      Document.findOne({
         _id: documentId,
         status: "active",
-        owner: req.user._id
-    })
+        owner: req.user._id,
+      }).session(session),
 
-    if(!document) {
-        throw new ApiError(404, "Document not found or not authorized")
-    }
-
-    const collaborator = await Collaborator.findOneAndDelete({
-        _id: collaboratorId,
-        document: documentId
-    })
-
-    if(!collaborator) {
-        throw new ApiError(404, "Collaborator not found")
-    }
-
-    return res.status(200).json(
-        new ApiResponse(200, {}, "Collaborator removed successfully")
-    )
-})
-
-const getCollaborators = asyncHandler(async(req, res) => {
-    const { documentId } = req.params
-
-    const document = await Document.findOne({
-        _id: documentId,
-        status: "active"
-    })
-
-    if(!document) {
-        throw new ApiError(404, "Document not found")
-    }
-
-    const isOwner = document.owner.equals(req.user._id)
-
-    if(!isOwner) {
-        const isCollaborator = await Collaborator.exists({
-            document: documentId,
-            user: req.user._id
-        })
-
-        if(!isCollaborator) {
-            throw new ApiError(403, "You do not have access to this document")
-        }
-    }
-
-    const collaborators = await Collaborator.find({
-        document: documentId
-    })
-    .populate("user", "name username avatar")
-    .populate("invitedBy", "name username avatar")
-
-    return res.status(200).json(
-        new ApiResponse(
-            200,
-            collaborators,
-            collaborators.length === 0 ? "No collaborators found" : "Collaborators fetched successfully"
-        )
-    )
-})
-
-const leaveDocument = asyncHandler(async(req, res) => {
-    const { documentId } = req.params
-
-    const collaborator = await Collaborator.findOneAndDelete({
+      Collaborator.findOne({
         document: documentId,
-        user: req.user._id
-    })
+        user: userId,
+      }).session(session),
+    ]);
 
-    if(!collaborator) {
-        throw new ApiError(404, "You are not a collaborator of this document")
+    if (!document) {
+      throw new ApiError(404, "Document not found or not authorized");
     }
 
-    return res.status(200).json(
-        new ApiResponse(200, {}, "You have left the document successfully")
-    )
-})
-
-const updateCollaboratorRole = asyncHandler(async(req, res) => {
-    const { documentId, userId } = req.params
-    const { newRole } = req.body
-
-    if(!["editor", "viewer"].includes(newRole)) {
-        throw new ApiError(400, "Invalid role. Must be editor or viewer")
+    if (!collaborator) {
+      throw new ApiError(400, "New owner must be an existing collaborator");
     }
 
-    const document = await Document.findOne({
-        _id: documentId,
-        status: "active",
-        owner: req.user._id
-    })
-
-    if(!document) {
-        throw new ApiError(404, "Document not found or not authorized")
+    if (userId === req.user._id.toString()) {
+      throw new ApiError(400, "You are already the owner");
     }
 
-    const collaborator = await Collaborator.findOneAndUpdate(
-        {
+    await Promise.all([
+      Document.updateOne(
+        { _id: documentId },
+        { $set: { owner: userId } },
+        { session },
+      ),
+
+      Collaborator.deleteOne(
+        { document: documentId, user: userId },
+        { session },
+      ),
+
+      Collaborator.create(
+        [
+          {
             document: documentId,
-            user: userId
-        },
-        {
-            $set: { role: newRole }
-        },
-        { new: true }
-    )
-    .populate("user", "name username avatar")
-    .populate("invitedBy", "name username avatar")
+            user: req.user._id,
+            role: "editor",
+            invitedBy: req.user._id,
+          },
+        ],
+        { session },
+      ),
+    ]);
 
-    if(!collaborator) {
-        throw new ApiError(404, "Collaborator not found")
-    }
+    await session.commitTransaction();
 
-    return res.status(200).json(
-        new ApiResponse(200, collaborator, "Collaborator role updated successfully")
-    )
-})
-
-const transferOwnership = asyncHandler(async(req, res) => {
-    const { documentId } = req.params
-    const { userId } = req.body
-
-    const session = await mongoose.startSession()
-
-    try {
-        session.startTransaction()
-
-        const [document, collaborator] = await Promise.all([
-            Document.findOne({
-                _id: documentId,
-                status: "active",
-                owner: req.user._id
-            }).session(session),
-
-            Collaborator.findOne({
-                document: documentId,
-                user: userId
-            }).session(session)
-        ])
-
-        if(!document) {
-            throw new ApiError(404, "Document not found or not authorized")
-        }
-
-        if(!collaborator) {
-            throw new ApiError(400, "New owner must be an existing collaborator")
-        }
-
-        if(userId === req.user._id.toString()) {
-            throw new ApiError(400, "You are already the owner")
-        }
-
-        await Promise.all([
-            Document.updateOne(
-                { _id: documentId },
-                { $set: { owner: userId } },
-                { session }
-            ),
-
-            Collaborator.deleteOne(
-                { document: documentId, user: userId },
-                { session }
-            ),
-
-            Collaborator.create([{
-                document: documentId,
-                user: req.user._id,
-                role: "editor",
-                invitedBy: req.user._id
-            }], { session })
-        ])
-
-        await session.commitTransaction()
-
-        return res.status(200).json(
-            new ApiResponse(200, {}, "Ownership transferred successfully")
-        )
-
-    } catch(error) {
-        await session.abortTransaction()
-        throw error
-    } finally {
-        session.endSession()
-    }
-})
+    return res
+      .status(200)
+      .json(new ApiResponse(200, {}, "Ownership transferred successfully"));
+  } catch (error) {
+    await session.abortTransaction();
+    throw error;
+  } finally {
+    session.endSession();
+  }
+});
 
 export {
-    addCollaborator,
-    removeCollaborator,
-    getCollaborators,
-    leaveDocument,
-    updateCollaboratorRole,
-    transferOwnership
-}
+  addCollaborator,
+  removeCollaborator,
+  getCollaborators,
+  leaveDocument,
+  updateCollaboratorRole,
+  transferOwnership,
+};
