@@ -8,20 +8,33 @@ import { InviteLink } from "../models/inviteLink.model.js";
 import { Version } from "../models/version.model.js";
 import { applyDelta } from "../utils/deltaHelpers.js";
 import { assertDocumentAccess } from "../utils/assertDocumentAccess.js";
+import { createVersionCore } from "../services/versionService.js";
 
-const createDocument = asyncHandler(async(req, res) => {
-    const { title, description } = req.body
+const createDocument = asyncHandler(async (req, res) => {
+    const { title, description } = req.body;
 
     const document = await Document.create({
         title: title?.trim() || "Untitled Document",
         description: description?.trim() || "",
-        owner: req.user._id
-    })
+        content: "", // Explicitly setting the DB baseline
+        owner: req.user._id,
+        lastEditedBy: req.user._id
+    });
+
+    // Records Zero State — guarantees blank document is always restorable.
+    // Version 1 is a snapshot by formula: (1-1) % 10 === 0.
+    // We pass the content ("") to respect the optimized Service contract.
+    await createVersionCore({
+        documentId: document._id,
+        documentContent: document.content, // Fulfils the service requirement!
+        userId: req.user._id,
+        label: "Initial Draft"
+    });
 
     return res
-    .status(201)
-    .json(new ApiResponse(201, document, "Document created successfully"))
-})
+        .status(201)
+        .json(new ApiResponse(201, document, "Document created successfully"));
+});
 
 const getDocument = asyncHandler(async (req, res) => {
     const { documentId } = req.params;
@@ -199,7 +212,8 @@ const updateDocumentContent = asyncHandler(async (req, res) => {
     const { documentId } = req.params;
     const { content } = req.body;
 
-    if (!content?.trim()) throw new ApiError(400, "Content is required");
+    if (content === undefined || content === null)
+    throw new ApiError(400, "Content is required");
 
     // Select only what permission check needs — not the full document
     const document = await Document.findOne({
