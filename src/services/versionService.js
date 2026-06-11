@@ -61,7 +61,7 @@ export const createVersionCore = async ({ documentId, documentContent, userId, l
 
         await Document.findByIdAndUpdate(
             documentId,
-            { lastEditedBy: userId },
+            { $set: { lastEditedBy: userId } },
             { session }
         );
 
