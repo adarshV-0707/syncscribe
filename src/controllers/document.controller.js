@@ -6,6 +6,8 @@ import { Document } from "../models/document.model.js";
 import { Collaborator } from "../models/collaborator.model.js"
 import { InviteLink } from "../models/inviteLink.model.js";
 import { Version } from "../models/version.model.js";
+import { applyDelta } from "../utils/deltaHelpers.js";
+import { assertDocumentAccess } from "../utils/assertDocumentAccess.js";
 
 const createDocument = asyncHandler(async(req, res) => {
     const { title, description } = req.body
@@ -197,46 +199,44 @@ const updateDocumentContent = asyncHandler(async (req, res) => {
     const { documentId } = req.params;
     const { content } = req.body;
 
-    if (!content?.trim()) {
-        throw new ApiError(400, "Content is required");
-    }
+    if (!content?.trim()) throw new ApiError(400, "Content is required");
 
-    const document = await Document.findById(documentId);
+    // Select only what permission check needs — not the full document
+    const document = await Document.findOne({
+        _id: documentId,
+        status: "active",
+    })
+        .select("owner")
+        .lean();                          // plain object, no Mongoose overhead
 
-    if (!document || document.status !== "active") {
-        throw new ApiError(404, "Document not found");
-    }
+    if (!document) throw new ApiError(404, "Document not found");
 
-    const isOwner = document.owner.equals(req.user._id);
-    if (!isOwner) {
+    if (!document.owner.equals(req.user._id)) {
         const isEditor = await Collaborator.exists({
             document: documentId,
             user: req.user._id,
-            role: { $in: ["editor"] }
+            role: "editor",              // exists() is already a boolean check
         });
 
-        if (!isEditor) {
+        if (!isEditor)
             throw new ApiError(403, "Viewers are not allowed to update the document");
-        }
     }
 
-    const updatedDocument = await Document.findByIdAndUpdate(
+    // Update only — no return value needed, client already has the document
+    await Document.findByIdAndUpdate(
         documentId,
         {
             $set: {
                 content,
                 lastEditedBy: req.user._id,
                 lastEditedAt: new Date(),
-            }
+            },
         },
-        { new: true, runValidators: true }
-    )
-    .populate("owner", "name username avatar")
-    .populate("lastEditedBy", "name username avatar");
-
-    return res.status(200).json(
-        new ApiResponse(200, updatedDocument, "Document content updated successfully")
     );
+
+    return res
+        .status(200)
+        .json(new ApiResponse(200, {}, "Content saved"));
 });
 
 const deleteDocument = asyncHandler(async (req, res) => {
@@ -459,39 +459,153 @@ const searchDocument = asyncHandler(async (req, res) => {
     )
 })
 
-const permanentDeleteDocument = asyncHandler(async (req, res) => {
-    const { documentId } = req.params;
+// documentController.js
+const restoreVersion = asyncHandler(async (req, res) => {
+    const { documentId, versionId } = req.params;
+    const userId = req.user._id;
+
+    await assertDocumentAccess(documentId, userId, { requireEditor: true });
+
+    const version = await Version.findOne({ _id: versionId, documentId })
+        .select("type content delta snapshotRef versionNumber label")
+        .lean();
+
+    if (!version) throw new ApiError(404, "Version not found");
+
+    let restoredContent;
+
+    if (version.type === "snapshot") {
+        restoredContent = version.content;
+    } else {
+        if (!version.snapshotRef)
+            throw new ApiError(
+                500,
+                "Diff version is missing snapshot reference",
+            );
+
+        const snapshot = await Version.findOne({
+            _id: version.snapshotRef,
+            documentId,
+            type: "snapshot",
+        })
+            .select("content")
+            .lean();
+
+        if (!snapshot)
+            throw new ApiError(
+                500,
+                "Referenced snapshot not found — version chain is broken",
+            );
+
+        restoredContent = applyDelta(snapshot.content, version.delta);
+    }
 
     const session = await mongoose.startSession();
+    let savedVersion;
+    session.startTransaction();
 
     try {
-        session.startTransaction();
-
-        const document = await Document.findOneAndDelete(
-            {
-                _id: documentId,
-                owner: req.user._id,
-                status: "deleted"
-            },
-            { session }
+        const versionNumber = await Version.nextVersionNumber(
+            documentId,
+            session,
         );
 
-        if (!document) {
-            throw new ApiError(404, "Document not found or not authorized for permanent deletion");
-        }
+        // Reflect original label in restore label if it existed
+        const restoreLabel = version.label
+            ? `Restored from v${version.versionNumber} — ${version.label}`
+            : `Restored from v${version.versionNumber}`;
 
+        [savedVersion] = await Version.create(
+            [
+                {
+                    documentId,
+                    versionNumber,
+                    type: "snapshot",
+                    content: restoredContent,
+                    label: restoreLabel,
+                    createdBy: userId,
+                },
+            ],
+            { session },
+        );
+
+        await Document.findByIdAndUpdate(
+            documentId,
+            {
+                content: restoredContent,
+                lastEditedBy: userId,
+            },
+            { session },
+        );
+
+        await session.commitTransaction();
+    } catch (err) {
+        await session.abortTransaction();
+        if (err.code === 11000)
+            throw new ApiError(409, "Version conflict — please retry");
+        throw err;
+    } finally {
+        session.endSession();
+    }
+
+    const responseData = {
+        _id: savedVersion._id,
+        documentId: savedVersion.documentId,
+        versionNumber: savedVersion.versionNumber,
+        type: savedVersion.type,
+        label: savedVersion.label,
+        createdBy: {
+            _id: req.user._id,
+            name: req.user.name,
+            username: req.user.username,
+        },
+        createdAt: savedVersion.createdAt,
+    };
+
+    return res
+        .status(201)
+        .json(
+            new ApiResponse(201, responseData, "Version restored successfully"),
+        );
+});
+
+const permanentDeleteDocument = asyncHandler(async (req, res) => {
+    const { documentId } = req.params;
+    const userId = req.user._id;
+
+    // Must exist, must be owner, must already be soft-deleted
+    const document = await Document.findOne({
+        _id: documentId,
+        owner: userId,
+        status: "deleted",
+    })
+        .select("_id")
+        .lean();
+
+    if (!document) throw new ApiError(404, "Document not found or not eligible for permanent deletion");
+
+    const session = await mongoose.startSession();
+    session.startTransaction(); // outside try — synchronous, never throws
+
+    try {
+        // Dependents first — all in parallel, same session
         await Promise.all([
+            Version.deleteMany({ documentId }, { session }),
             Collaborator.deleteMany({ document: documentId }, { session }),
             InviteLink.deleteMany({ document: documentId }, { session }),
-            Version.deleteMany({ document: documentId }, { session }),
         ]);
+
+        // Parent last — only after dependents are gone
+        await Document.findOneAndDelete(
+            { _id: documentId, owner: userId },
+            { session }
+        );
 
         await session.commitTransaction();
 
         return res.status(200).json(
-            new ApiResponse(200, {}, "Document permanently deleted successfully")
+            new ApiResponse(200, {}, "Document permanently deleted")
         );
-
     } catch (err) {
         await session.abortTransaction();
         throw err;
@@ -514,6 +628,7 @@ export {
     getDeletedDocuments,
     togglePublic,
     searchDocument,
+    restoreVersion,
     permanentDeleteDocument
 }
 
