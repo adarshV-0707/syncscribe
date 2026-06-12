@@ -9,6 +9,7 @@ import { Version } from "../models/version.model.js";
 import { applyDelta } from "../utils/deltaHelpers.js";
 import { assertDocumentAccess } from "../utils/assertDocumentAccess.js";
 import { createVersionCore } from "../services/versionService.js";
+import { getIO } from "../socket/socketInstance.js"
 
 const createDocument = asyncHandler(async (req, res) => {
     const { title, description } = req.body;
@@ -553,12 +554,37 @@ const restoreVersion = asyncHandler(async (req, res) => {
         );
 
         await session.commitTransaction();
-    } catch (err) {
+        const io = getIO()
+
+        // EVENT: document_restored — tells clients to replace editor content
+        io.to(documentId).emit("document_restored", {
+            docId: documentId,
+            content: restoredContent,
+            restoredBy: userId,
+            versionNumber: savedVersion.versionNumber,
+            label: savedVersion.label,
+            restoredAt: new Date()
+        })
+
+        // EVENT: version_created — tells clients to update version history panel
+        io.to(documentId).emit("version_created", {
+            docId: documentId,
+            versionId: savedVersion._id,
+            versionNumber: savedVersion.versionNumber,
+            type: savedVersion.type,
+            label: savedVersion.label,
+            createdBy: savedVersion.createdBy,
+            createdAt: savedVersion.createdAt
+        })
+    }
+     catch (err) {
         await session.abortTransaction();
         if (err.code === 11000)
             throw new ApiError(409, "Version conflict — please retry");
         throw err;
-    } finally {
+    } 
+    
+    finally {
         session.endSession();
     }
 
