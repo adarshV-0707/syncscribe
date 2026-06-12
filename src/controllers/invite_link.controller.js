@@ -3,7 +3,7 @@ import mongoose from "mongoose";
 import { asyncHandler } from "../utils/AsyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
-import { InviteLink } from "../models/invite_link.model.js";
+import { InviteLink } from "../models/inviteLink.model.js";
 import { Document } from "../models/document.model.js";
 import { Collaborator } from "../models/collaborator.model.js";
 
