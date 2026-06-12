@@ -3,10 +3,10 @@ import cors from 'cors'
 import cookieParser from 'cookie-parser'
 import helmet from 'helmet'
 import morgan from 'morgan'
-import userRouter from './routes/user.routes.js'
-import documentRouter from './routes/document.routes.js'
-import collaboratorRouter from './routes/collaborator.routes.js'
-import inviteLinkRouter from "./routes/invite_link.routes.js"
+import userRouter from './routes/user.route.js'
+import documentRouter from './routes/document.route.js'
+import collaboratorRouter from './routes/collaborator.route.js'
+import inviteLinkRouter from "./routes/invite_link.route.js"
 
 
 
