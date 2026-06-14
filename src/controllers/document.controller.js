@@ -9,7 +9,7 @@ import { Version } from "../models/version.model.js";
 import { applyDelta } from "../utils/deltaHelpers.js";
 import { assertDocumentAccess } from "../utils/assertDocumentAccess.js";
 import { createVersionCore } from "../services/versionService.js";
-import { getIO } from "../socket/socketInstance.js";
+import { getIO } from "../utils/socket/socketInstance.js";
 
 const createDocument = asyncHandler(async (req, res) => {
   const { title, description } = req.body;

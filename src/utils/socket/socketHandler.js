@@ -1,5 +1,5 @@
-import { createVersionCore } from "../services/version.service.js";
-import { socketAuthMiddleware } from "../middlewares/socketMiddleware.js";
+import { createVersionCore } from "../../services/versionService.js";
+import { socketAuthMiddleware } from "../../middlewares/socket.middleware.js";
 
 const activeUsers = new Map();
 
