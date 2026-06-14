@@ -1,127 +1,120 @@
-import { createVersionCore } from "../services/version.service.js"
-import { socketAuthMiddleware } from "../middlewares/socketMiddleware.js"
+import { createVersionCore } from "../services/version.service.js";
+import { socketAuthMiddleware } from "../middlewares/socketMiddleware.js";
 
-const activeUsers = new Map()
+const activeUsers = new Map();
 
 export const initSocketHandler = (io) => {
+  io.use(socketAuthMiddleware);
 
-    io.use(socketAuthMiddleware)
+  io.on("connection", (socket) => {
+    console.log(`Socket connected: ${socket.id} — user: ${socket.username}`);
 
-    io.on("connection", (socket) => {
-        console.log(`Socket connected: ${socket.id} — user: ${socket.username}`)
+    // ─── EVENT 1: join_document ───────────────────────────────────────
+    socket.on("join_document", ({ docId }) => {
+      if (!docId) {
+        socket.emit("socket_error", {
+          event: "join_document",
+          message: "docId is required",
+        });
+        return;
+      }
 
+      socket.join(docId);
+      socket.currentDocId = docId;
 
-        // ─── EVENT 1: join_document ───────────────────────────────────────
-        socket.on("join_document", ({ docId }) => {
+      if (!activeUsers.has(docId)) {
+        activeUsers.set(docId, []);
+      }
 
-            if (!docId) {
-                socket.emit("socket_error", {
-                    event: "join_document",
-                    message: "docId is required"
-                })
-                return
-            }
+      activeUsers.get(docId).push({
+        socketId: socket.id,
+        userId: socket.userId,
+        username: socket.username,
+      });
 
-            socket.join(docId)
-            socket.currentDocId = docId
+      // EVENT 2: active_users — broadcast to entire room including sender
+      io.to(docId).emit("active_users", {
+        docId,
+        users: activeUsers.get(docId),
+      });
 
-            if (!activeUsers.has(docId)) {
-                activeUsers.set(docId, [])
-            }
+      // EVENT 3: user_joined — broadcast to everyone except sender
+      socket.to(docId).emit("user_joined", {
+        userId: socket.userId,
+        username: socket.username,
+      });
+    });
 
-            activeUsers.get(docId).push({
-                socketId: socket.id,
-                userId: socket.userId,
-                username: socket.username
-            })
+    // ─── EVENT 4: disconnect (built-in) ──────────────────────────────
+    socket.on("disconnect", () => {
+      console.log(`Socket disconnected: ${socket.id}`);
 
-            // EVENT 2: active_users — broadcast to entire room including sender
-            io.to(docId).emit("active_users", {
-                docId,
-                users: activeUsers.get(docId)
-            })
+      const docId = socket.currentDocId;
+      if (!docId) return;
 
-            // EVENT 3: user_joined — broadcast to everyone except sender
-            socket.to(docId).emit("user_joined", {
-                userId: socket.userId,
-                username: socket.username
-            })
-        })
+      if (activeUsers.has(docId)) {
+        const updated = activeUsers
+          .get(docId)
+          .filter((u) => u.socketId !== socket.id);
 
+        if (updated.length === 0) {
+          activeUsers.delete(docId);
+        } else {
+          activeUsers.set(docId, updated);
 
-        // ─── EVENT 4: disconnect (built-in) ──────────────────────────────
-        socket.on("disconnect", () => {
-            console.log(`Socket disconnected: ${socket.id}`)
+          io.to(docId).emit("active_users", {
+            docId,
+            users: updated,
+          });
+        }
+      }
+    });
 
-            const docId = socket.currentDocId
-            if (!docId) return
+    // ─── EVENT 5: trigger_save ────────────────────────────────────────
+    socket.on("trigger_save", async ({ docId, content, label }) => {
+      if (!docId || !content) {
+        socket.emit("socket_error", {
+          event: "trigger_save",
+          message: "docId and content are required",
+        });
+        return;
+      }
 
-            if (activeUsers.has(docId)) {
-                const updated = activeUsers.get(docId).filter(
-                    (u) => u.socketId !== socket.id
-                )
+      try {
+        const savedVersion = await createVersionCore({
+          documentId: docId,
+          documentContent: content,
+          userId: socket.userId,
+          label: label || null,
+        });
 
-                if (updated.length === 0) {
-                    activeUsers.delete(docId)
-                } else {
-                    activeUsers.set(docId, updated)
+        // EVENT 6: version_created — broadcast to entire room
+        io.to(docId).emit("version_created", {
+          docId,
+          versionId: savedVersion._id,
+          versionNumber: savedVersion.versionNumber,
+          type: savedVersion.type,
+          label: savedVersion.label,
+          createdBy: savedVersion.createdBy,
+          createdAt: savedVersion.createdAt,
+        });
 
-                    io.to(docId).emit("active_users", {
-                        docId,
-                        users: updated
-                    })
-                }
-            }
-        })
+        // EVENT 7: document_updated — broadcast to entire room
+        io.to(docId).emit("document_updated", {
+          docId,
+          content,
+          updatedBy: socket.userId,
+          updatedAt: new Date(),
+        });
+      } catch (err) {
+        console.error("trigger_save error:", err);
 
-
-        // ─── EVENT 5: trigger_save ────────────────────────────────────────
-        socket.on("trigger_save", async ({ docId, content, label }) => {
-
-            if (!docId || !content) {
-                socket.emit("socket_error", {
-                    event: "trigger_save",
-                    message: "docId and content are required"
-                })
-                return
-            }
-
-            try {
-                const savedVersion = await createVersionCore({
-                    documentId: docId,
-                    documentContent: content,
-                    userId: socket.userId,
-                    label: label || null
-                })
-
-                // EVENT 6: version_created — broadcast to entire room
-                io.to(docId).emit("version_created", {
-                    docId,
-                    versionId: savedVersion._id,
-                    versionNumber: savedVersion.versionNumber,
-                    type: savedVersion.type,
-                    label: savedVersion.label,
-                    createdBy: savedVersion.createdBy,
-                    createdAt: savedVersion.createdAt
-                })
-
-                // EVENT 7: document_updated — broadcast to entire room
-                io.to(docId).emit("document_updated", {
-                    docId,
-                    content,
-                    updatedBy: socket.userId,
-                    updatedAt: new Date()
-                })
-
-            } catch (err) {
-                console.error("trigger_save error:", err)
-
-                // EVENT 8: socket_error — only to sender
-                socket.emit("socket_error", {
-                    event: "trigger_save",
-                    message: err.message || "Save failed"
-                })
-            }
-        })
-    })
-}
+        // EVENT 8: socket_error — only to sender
+        socket.emit("socket_error", {
+          event: "trigger_save",
+          message: err.message || "Save failed",
+        });
+      }
+    });
+  });
+};

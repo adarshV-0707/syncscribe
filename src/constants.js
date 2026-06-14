@@ -1,3 +1,3 @@
-const DB_NAME = "syncscribe"
+const DB_NAME = "syncscribe";
 
-export {DB_NAME}
+export { DB_NAME };

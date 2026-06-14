@@ -1,19 +1,19 @@
 import { Router } from "express";
 import {
-    createDocument,
-    getDocument,
-    getAllDocuments,
-    getSharedDocuments,
-    updateDocumentInfo,
-    updateDocumentContent,
-    deleteDocument,
-    restoreDocument,
-    archiveDocument,
-    getArchivedDocuments,
-    getDeletedDocuments,
-    togglePublic,
-    searchDocument,
-    permanentDeleteDocument
+  createDocument,
+  getDocument,
+  getAllDocuments,
+  getSharedDocuments,
+  updateDocumentInfo,
+  updateDocumentContent,
+  deleteDocument,
+  restoreDocument,
+  archiveDocument,
+  getArchivedDocuments,
+  getDeletedDocuments,
+  togglePublic,
+  searchDocument,
+  permanentDeleteDocument,
 } from "../controllers/document.controller.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 
@@ -23,9 +23,7 @@ router.use(verifyJWT);
 // ==========================
 // 📄 COLLECTION
 // ==========================
-router.route("/")
-    .post(createDocument)
-    .get(getAllDocuments);
+router.route("/").post(createDocument).get(getAllDocuments);
 
 // ==========================
 // 🔍 UTILITY
@@ -42,10 +40,11 @@ router.get("/deleted", getDeletedDocuments);
 // ==========================
 // 📄 SINGLE DOCUMENT
 // ==========================
-router.route("/:documentId")
-    .get(getDocument)
-    .patch(updateDocumentInfo)
-    .delete(deleteDocument);
+router
+  .route("/:documentId")
+  .get(getDocument)
+  .patch(updateDocumentInfo)
+  .delete(deleteDocument);
 
 // ==========================
 // ✏️ CONTENT

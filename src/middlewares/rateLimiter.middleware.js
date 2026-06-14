@@ -1,4 +1,4 @@
-import rateLimit from "express-rate-limit"
+import rateLimit from "express-rate-limit";
 
 // ─────────────────────────────────────────
 // POST /join/:token
@@ -6,16 +6,15 @@ import rateLimit from "express-rate-limit"
 // 10 attempts per IP per 15 minutes
 // ─────────────────────────────────────────
 export const joinRateLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 10,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: {
-        statusCode: 429,
-        message: "Too many join attempts. Please try again after 15 minutes."
-    }
-})
-
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    statusCode: 429,
+    message: "Too many join attempts. Please try again after 15 minutes.",
+  },
+});
 
 // ─────────────────────────────────────────
 // GET /join/:token
@@ -24,16 +23,15 @@ export const joinRateLimiter = rateLimit({
 // Lighter than join since it's read-only, but still needs protection
 // ─────────────────────────────────────────
 export const previewRateLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 30,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: {
-        statusCode: 429,
-        message: "Too many preview attempts. Please try again after 15 minutes."
-    }
-})
-
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    statusCode: 429,
+    message: "Too many preview attempts. Please try again after 15 minutes.",
+  },
+});
 
 // ─────────────────────────────────────────
 // POST /:documentId/invite-links
@@ -41,12 +39,12 @@ export const previewRateLimiter = rateLimit({
 // 20 invite link creations per IP per hour
 // ─────────────────────────────────────────
 export const createInviteLinkRateLimiter = rateLimit({
-    windowMs: 60 * 60 * 1000,
-    max: 20,
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: {
-        statusCode: 429,
-        message: "Too many invite links created. Please try again after an hour."
-    }
-})
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    statusCode: 429,
+    message: "Too many invite links created. Please try again after an hour.",
+  },
+});
