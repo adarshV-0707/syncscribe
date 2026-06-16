@@ -30,6 +30,10 @@ const documentSchema = new Schema(
       enum: ["active", "archived", "deleted"],
       default: "active",
     },
+    latestVersion: {
+      type: Number,
+      default: 0,
+    },
     lastEditedBy: {
       type: Schema.Types.ObjectId,
       ref: "User",
