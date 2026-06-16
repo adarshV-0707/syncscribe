@@ -6,6 +6,8 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { InviteLink } from "../models/inviteLink.model.js";
 import { Document } from "../models/document.model.js";
 import { Collaborator } from "../models/collaborator.model.js";
+import { getIO } from "../utils/socket/socketInstance.js";
+
 
 const hashToken = (token) =>
   crypto.createHash("sha256").update(token).digest("hex");
@@ -239,8 +241,6 @@ const joinViaInviteLink = asyncHandler(async (req, res) => {
     for (let attempt = 0; attempt < 3; attempt++) {
       session.startTransaction();
       try {
-        // Atomic gate — this is the real validation, not Phase 1
-        // Flat query: easier to reason about, no nested $and[$or, $or]
         claimed = await InviteLink.findOneAndUpdate(
           {
             _id: inviteLink._id,
@@ -258,7 +258,6 @@ const joinViaInviteLink = asyncHandler(async (req, res) => {
         );
 
         if (!claimed) {
-          // Atomic gate rejected — diagnose exact reason for specific error
           const failed = await InviteLink.findById(inviteLink._id).lean();
           if (failed.expiresAt && failed.expiresAt < new Date()) {
             throw new ApiError(410, "Invite link has expired");
@@ -288,6 +287,18 @@ const joinViaInviteLink = asyncHandler(async (req, res) => {
         );
 
         await session.commitTransaction();
+
+        // ── Socket: notify room about new collaborator ──
+        const io = getIO();
+        io.to(documentId.toString()).emit("collaborator_added", {
+          docId: documentId,
+          collaborator: {
+            userId,
+            role: claimed.role,
+            joinedVia: "invite_link",
+          },
+        });
+
         break;
       } catch (err) {
         await session.abortTransaction();
@@ -310,8 +321,6 @@ const joinViaInviteLink = asyncHandler(async (req, res) => {
   }
 
   // ── Post-transaction: deactivate if maxUses hit ──
-  // Not correctness-critical — collaborator is already created above
-  // updateOne with isActive: true guard prevents double-write on concurrent hits
   if (claimed.maxUses !== null && claimed.usedCount >= claimed.maxUses) {
     await InviteLink.updateOne(
       { _id: claimed._id, isActive: true },
