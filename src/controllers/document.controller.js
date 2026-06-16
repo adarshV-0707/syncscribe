@@ -17,19 +17,19 @@ const createDocument = asyncHandler(async (req, res) => {
   const document = await Document.create({
     title: title?.trim() || "Untitled Document",
     description: description?.trim() || "",
-    content: "", // Explicitly setting the DB baseline
+    content: "",
     owner: req.user._id,
     lastEditedBy: req.user._id,
+    // latestVersion defaults to 0 from schema
   });
 
-  // Records Zero State — guarantees blank document is always restorable.
-  // Version 1 is a snapshot by formula: (1-1) % 10 === 0.
-  // We pass the content ("") to respect the optimized Service contract.
   await createVersionCore({
     documentId: document._id,
-    documentContent: document.content, // Fulfils the service requirement!
+    documentContent: document.content,
     userId: req.user._id,
     label: "Initial Draft",
+    baseVersionNumber: 0,      // NEW — document starts at version 0
+    saveType: "manual",        // NEW — creation is an intentional action
   });
 
   return res
@@ -37,50 +37,45 @@ const createDocument = asyncHandler(async (req, res) => {
     .json(new ApiResponse(201, document, "Document created successfully"));
 });
 
-const getDocument = asyncHandler(async (req, res) => {
+const updateDocumentInfo = asyncHandler(async (req, res) => {
   const { documentId } = req.params;
+  const { newTitle, newDescription } = req.body;
 
-  const document = await Document.findOne({
-    _id: documentId,
-    status: "active",
-  })
+  const title = newTitle?.trim();
+  const description = newDescription?.trim();
+
+  if (!title && !description) {
+    throw new ApiError(400, "At least one field is required to update");
+  }
+
+  const updateFields = {};
+  if (title) updateFields.title = title;
+  if (description !== undefined) updateFields.description = description;
+
+  const updatedDocument = await Document.findOneAndUpdate(
+    { _id: documentId, status: "active", owner: req.user._id },
+    { $set: updateFields },
+    { new: true, runValidators: true },
+  )
     .populate("owner", "name username avatar")
     .populate("lastEditedBy", "name username avatar");
 
-  if (!document) {
-    throw new ApiError(404, "Document not found");
+  if (!updatedDocument) {
+    throw new ApiError(404, "Document not found or not authorized");
   }
 
-  const isOwner = document.owner._id.toString() === req.user._id.toString();
-
-  if (!document.isPublic && !isOwner) {
-    const collaborator = await Collaborator.findOne({
-      document: documentId,
-      user: req.user._id,
-    });
-
-    if (!collaborator) {
-      throw new ApiError(403, "User does not have access to this document");
-    }
-
-    // Return collaborator role so frontend knows what user can do
-    return res
-      .status(200)
-      .json(
-        new ApiResponse(
-          200,
-          { document, role: collaborator.role },
-          "Document fetched successfully",
-        ),
-      );
-  }
-
-  const role = isOwner ? "owner" : "public";
+  const io = getIO();
+  io.to(documentId.toString()).emit("document_info_updated", {
+    docId: documentId,
+    title: updatedDocument.title,
+    description: updatedDocument.description,
+    updatedBy: req.user._id,
+  });
 
   return res
     .status(200)
     .json(
-      new ApiResponse(200, { document, role }, "Document fetched successfully"),
+      new ApiResponse(200, updatedDocument, "Document info updated successfully"),
     );
 });
 
@@ -232,42 +227,78 @@ const updateDocumentInfo = asyncHandler(async (req, res) => {
 
 const updateDocumentContent = asyncHandler(async (req, res) => {
   const { documentId } = req.params;
-  const { content } = req.body;
+  const { content, baseVersionNumber, saveType } = req.body;
 
   if (content === undefined || content === null)
     throw new ApiError(400, "Content is required");
 
-  // Select only what permission check needs — not the full document
-  const document = await Document.findOne({
-    _id: documentId,
-    status: "active",
-  })
-    .select("owner")
-    .lean(); // plain object, no Mongoose overhead
+  if (baseVersionNumber === undefined || baseVersionNumber === null)
+    throw new ApiError(400, "baseVersionNumber is required");
 
-  if (!document) throw new ApiError(404, "Document not found");
-
-  if (!document.owner.equals(req.user._id)) {
-    const isEditor = await Collaborator.exists({
-      document: documentId,
-      user: req.user._id,
-      role: "editor", // exists() is already a boolean check
-    });
-
-    if (!isEditor)
-      throw new ApiError(403, "Viewers are not allowed to update the document");
-  }
-
-  // Update only — no return value needed, client already has the document
-  await Document.findByIdAndUpdate(documentId, {
-    $set: {
-      content,
-      lastEditedBy: req.user._id,
-      lastEditedAt: new Date(),
-    },
+  // ─── Permission check ─────────────────────────────────────
+  await assertDocumentAccess(documentId, req.user._id, {
+    requireEditor: true,
   });
 
-  return res.status(200).json(new ApiResponse(200, {}, "Content saved"));
+  // ─── Save via CAS ─────────────────────────────────────────
+  const result = await createVersionCore({
+    documentId,
+    documentContent: content,
+    userId: req.user._id,
+    label: null,
+    baseVersionNumber,
+    saveType: saveType || "autosave",
+  });
+
+  // ─── Socket events ────────────────────────────────────────
+  const io = getIO();
+
+  if (!result.wasConflicted) {
+    // CLEAN SAVE — broadcast to all clients in the document room
+    io.to(documentId.toString()).emit("document_updated", {
+      docId: documentId,
+      content,
+      versionNumber: result.savedVersion.versionNumber,
+      updatedBy: req.user._id,
+      updatedAt: new Date(),
+    });
+
+    io.to(documentId.toString()).emit("version_created", {
+      docId: documentId,
+      versionId: result.savedVersion._id,
+      versionNumber: result.savedVersion.versionNumber,
+      type: result.savedVersion.type,
+      label: result.savedVersion.label,
+      createdBy: result.savedVersion.createdBy,
+      createdAt: result.savedVersion.createdAt,
+    });
+
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          versionNumber: result.savedVersion.versionNumber,
+          wasConflicted: false,
+        },
+        "Content saved",
+      ),
+    );
+  } else {
+    // CONFLICT — no broadcast, return conflict info to caller
+    return res.status(409).json(
+      new ApiResponse(
+        409,
+        {
+          versionNumber: result.savedVersion.versionNumber,
+          wasConflicted: true,
+          currentContent: result.currentContent,
+          yourContent: content,
+          basedOnVersion: baseVersionNumber,
+        },
+        "Your changes conflicted with recent edits. Your version has been preserved.",
+      ),
+    );
+  }
 });
 
 const deleteDocument = asyncHandler(async (req, res) => {
@@ -288,6 +319,14 @@ const deleteDocument = asyncHandler(async (req, res) => {
   if (!deletedDocument) {
     throw new ApiError(404, "Document not found or not authorized");
   }
+
+  // ── Socket: kick all active users ──
+  const io = getIO();
+  io.to(documentId.toString()).emit("document_deleted", {
+    docId: documentId,
+    deletedBy: req.user._id,
+    message: "This document has been deleted by the owner.",
+  });
 
   return res
     .status(200)
@@ -338,6 +377,14 @@ const archiveDocument = asyncHandler(async (req, res) => {
   if (!archivedDocument) {
     throw new ApiError(404, "Document not found or not authorized");
   }
+
+  // ── Socket: notify all active users ──
+  const io = getIO();
+  io.to(documentId.toString()).emit("document_archived", {
+    docId: documentId,
+    archivedBy: req.user._id,
+    message: "This document has been archived by the owner.",
+  });
 
   return res
     .status(200)
@@ -424,40 +471,6 @@ const getDeletedDocuments = asyncHandler(async (req, res) => {
   );
 });
 
-const togglePublic = asyncHandler(async (req, res) => {
-  const { documentId } = req.params;
-
-  const updatedDocument = await Document.findOneAndUpdate(
-    {
-      _id: documentId,
-      owner: req.user._id,
-      status: "active",
-    },
-    [
-      {
-        $set: {
-          isPublic: { $not: "$isPublic" },
-        },
-      },
-    ],
-    { new: true },
-  );
-
-  if (!updatedDocument) {
-    throw new ApiError(404, "Document not found or not authorized");
-  }
-
-  return res
-    .status(200)
-    .json(
-      new ApiResponse(
-        200,
-        updatedDocument,
-        `Document is now ${updatedDocument.isPublic ? "public" : "private"}`,
-      ),
-    );
-});
-
 const searchDocument = asyncHandler(async (req, res) => {
   const { query, page = 1, limit = 10 } = req.query;
 
@@ -517,6 +530,7 @@ const restoreVersion = asyncHandler(async (req, res) => {
 
   if (!version) throw new ApiError(404, "Version not found");
 
+  // ─── Reconstruct content ─────────────────────────────────
   let restoredContent;
 
   if (version.type === "snapshot") {
@@ -542,14 +556,30 @@ const restoreVersion = asyncHandler(async (req, res) => {
     restoredContent = applyDelta(snapshot.content, version.delta);
   }
 
+  // ─── Atomic save ──────────────────────────────────────────
   const session = await mongoose.startSession();
   let savedVersion;
   session.startTransaction();
 
   try {
-    const versionNumber = await Version.nextVersionNumber(documentId, session);
+    // Force-update: restore is authoritative, no CAS needed
+    const updatedDoc = await Document.findOneAndUpdate(
+      { _id: documentId },
+      {
+        $inc: { latestVersion: 1 },
+        $set: {
+          content: restoredContent,
+          lastEditedBy: userId,
+          lastEditedAt: new Date(),
+        },
+      },
+      { new: true, session },
+    );
 
-    // Reflect original label in restore label if it existed
+    if (!updatedDoc) throw new ApiError(404, "Document not found");
+
+    const newVersionNumber = updatedDoc.latestVersion;
+
     const restoreLabel = version.label
       ? `Restored from v${version.versionNumber} — ${version.label}`
       : `Restored from v${version.versionNumber}`;
@@ -558,40 +588,35 @@ const restoreVersion = asyncHandler(async (req, res) => {
       [
         {
           documentId,
-          versionNumber,
-          type: "snapshot",
+          versionNumber: newVersionNumber,
+          type: "snapshot",           // restores are always full snapshots
           content: restoredContent,
           label: restoreLabel,
           createdBy: userId,
+          // ── NEW FIELDS ──
+          basedOnVersion: version.versionNumber,  // the version being restored
+          wasConflicted: false,
+          saveType: "restore",
         },
       ],
       { session },
     );
 
-    await Document.findByIdAndUpdate(
-      documentId,
-      {
-        content: restoredContent,
-        lastEditedBy: userId,
-      },
-      { session },
-    );
-
     await session.commitTransaction();
+
+    // ─── Socket events ──────────────────────────────────────
     const io = getIO();
 
-    // EVENT: document_restored — tells clients to replace editor content
-    io.to(documentId).emit("document_restored", {
+    io.to(documentId.toString()).emit("document_restored", {
       docId: documentId,
       content: restoredContent,
-      restoredBy: userId,
       versionNumber: savedVersion.versionNumber,
+      restoredBy: userId,
       label: savedVersion.label,
       restoredAt: new Date(),
     });
 
-    // EVENT: version_created — tells clients to update version history panel
-    io.to(documentId).emit("version_created", {
+    io.to(documentId.toString()).emit("version_created", {
       docId: documentId,
       versionId: savedVersion._id,
       versionNumber: savedVersion.versionNumber,

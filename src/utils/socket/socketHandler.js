@@ -9,7 +9,7 @@ export const initSocketHandler = (io) => {
   io.on("connection", (socket) => {
     console.log(`Socket connected: ${socket.id} — user: ${socket.username}`);
 
-    // ─── EVENT 1: join_document ───────────────────────────────────────
+    // ─── EVENT: join_document (unchanged) ─────────────────────────────
     socket.on("join_document", ({ docId }) => {
       if (!docId) {
         socket.emit("socket_error", {
@@ -32,20 +32,18 @@ export const initSocketHandler = (io) => {
         username: socket.username,
       });
 
-      // EVENT 2: active_users — broadcast to entire room including sender
       io.to(docId).emit("active_users", {
         docId,
         users: activeUsers.get(docId),
       });
 
-      // EVENT 3: user_joined — broadcast to everyone except sender
       socket.to(docId).emit("user_joined", {
         userId: socket.userId,
         username: socket.username,
       });
     });
 
-    // ─── EVENT 4: disconnect (built-in) ──────────────────────────────
+    // ─── EVENT: disconnect (unchanged) ────────────────────────────────
     socket.on("disconnect", () => {
       console.log(`Socket disconnected: ${socket.id}`);
 
@@ -70,51 +68,86 @@ export const initSocketHandler = (io) => {
       }
     });
 
-    // ─── EVENT 5: trigger_save ────────────────────────────────────────
-    socket.on("trigger_save", async ({ docId, content, label }) => {
-      if (!docId || !content) {
-        socket.emit("socket_error", {
-          event: "trigger_save",
-          message: "docId and content are required",
-        });
-        return;
-      }
+    // ─── EVENT: trigger_save (REWRITTEN) ──────────────────────────────
+    socket.on(
+      "trigger_save",
+      async ({ docId, content, label, baseVersionNumber, saveType }) => {
+        if (!docId || !content) {
+          socket.emit("socket_error", {
+            event: "trigger_save",
+            message: "docId and content are required",
+          });
+          return;
+        }
 
-      try {
-        const savedVersion = await createVersionCore({
-          documentId: docId,
-          documentContent: content,
-          userId: socket.userId,
-          label: label || null,
-        });
+        if (baseVersionNumber === undefined || baseVersionNumber === null) {
+          socket.emit("socket_error", {
+            event: "trigger_save",
+            message: "baseVersionNumber is required",
+          });
+          return;
+        }
 
-        // EVENT 6: version_created — broadcast to entire room
-        io.to(docId).emit("version_created", {
-          docId,
-          versionId: savedVersion._id,
-          versionNumber: savedVersion.versionNumber,
-          type: savedVersion.type,
-          label: savedVersion.label,
-          createdBy: savedVersion.createdBy,
-          createdAt: savedVersion.createdAt,
-        });
+        try {
+          const result = await createVersionCore({
+            documentId: docId,
+            documentContent: content,
+            userId: socket.userId,
+            label: label || null,
+            baseVersionNumber,
+            saveType: saveType || "autosave",
+          });
 
-        // EVENT 7: document_updated — broadcast to entire room
-        io.to(docId).emit("document_updated", {
-          docId,
-          content,
-          updatedBy: socket.userId,
-          updatedAt: new Date(),
-        });
-      } catch (err) {
-        console.error("trigger_save error:", err);
+          if (!result.wasConflicted) {
+            // ── CLEAN SAVE (includes conflict_resolution bypass) ──
 
-        // EVENT 8: socket_error — only to sender
-        socket.emit("socket_error", {
-          event: "trigger_save",
-          message: err.message || "Save failed",
-        });
-      }
-    });
+            // Broadcast to everyone EXCEPT sender
+            socket.to(docId).emit("version_created", {
+              docId,
+              versionId: result.savedVersion._id,
+              versionNumber: result.savedVersion.versionNumber,
+              type: result.savedVersion.type,
+              label: result.savedVersion.label,
+              createdBy: result.savedVersion.createdBy,
+              createdAt: result.savedVersion.createdAt,
+            });
+
+            socket.to(docId).emit("document_updated", {
+              docId,
+              content,
+              versionNumber: result.savedVersion.versionNumber,
+              updatedBy: socket.userId,
+              updatedAt: new Date(),
+            });
+
+            // Confirm to sender only
+            socket.emit("save_confirmed", {
+              docId,
+              versionNumber: result.savedVersion.versionNumber,
+              wasConflicted: false,
+            });
+          } else {
+            // ── CONFLICT — notify sender only, NO broadcast ──
+
+            socket.emit("conflict_detected", {
+              docId,
+              yourVersionNumber: result.savedVersion.versionNumber,
+              currentContent: result.currentContent,
+              yourContent: content,
+              basedOnVersion: baseVersionNumber,
+              message:
+                "Your changes conflicted with recent edits. Your version has been preserved.",
+            });
+          }
+        } catch (err) {
+          console.error("trigger_save error:", err);
+
+          socket.emit("socket_error", {
+            event: "trigger_save",
+            message: err.message || "Save failed",
+          });
+        }
+      },
+    );
   });
 };
