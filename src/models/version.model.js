@@ -48,6 +48,20 @@ const versionSchema = new Schema(
       ref: "User",
       required: [true, "Creator reference is required"],
     },
+     // Conflict Detection Fields ───
+    basedOnVersion: {
+      type: Number,
+      default: null,
+    },
+    wasConflicted: {
+      type: Boolean,
+      default: false,
+    },
+    saveType: {
+      type: String,
+      enum: ["autosave", "manual", "conflict_resolution", "restore"],
+      default: "autosave",
+    },
   },
   {
     timestamps: { createdAt: true, updatedAt: false }, // versions are immutable
