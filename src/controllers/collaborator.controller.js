@@ -5,6 +5,7 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { Document } from "../models/document.model.js";
 import { Collaborator } from "../models/collaborator.model.js";
 import { User } from "../models/user.model.js";
+import { getIO } from "../utils/socket/socketInstance.js";
 
 const addCollaborator = asyncHandler(async (req, res) => {
   const { documentId } = req.params;
@@ -57,6 +58,17 @@ const addCollaborator = asyncHandler(async (req, res) => {
       { path: "user", select: "name username avatar" },
       { path: "invitedBy", select: "name username avatar" },
     ]);
+    
+    const io = getIO();
+    io.to(documentId.toString()).emit("collaborator_added", {
+      docId: documentId,
+      collaborator: {
+        _id: collaborator._id,
+        user: collaborator.user,
+        role: collaborator.role,
+        invitedBy: collaborator.invitedBy,
+      },
+    });
 
     return res
       .status(201)
@@ -92,6 +104,14 @@ const removeCollaborator = asyncHandler(async (req, res) => {
   if (!collaborator) {
     throw new ApiError(404, "Collaborator not found");
   }
+
+  const io = getIO();
+  io.to(documentId.toString()).emit("collaborator_removed", {
+      docId: documentId,
+      collaboratorId,
+      userId: collaborator.user,
+      message: "You have been removed from this document.",
+    });
 
   return res
     .status(200)
@@ -153,6 +173,12 @@ const leaveDocument = asyncHandler(async (req, res) => {
   if (!collaborator) {
     throw new ApiError(404, "You are not a collaborator of this document");
   }
+    
+  const io = getIO();
+  io.to(documentId.toString()).emit("collaborator_left", {
+    docId: documentId,
+    userId: req.user._id,
+  });
 
   return res
     .status(200)
@@ -194,6 +220,14 @@ const updateCollaboratorRole = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Collaborator not found");
   }
 
+  const io = getIO();
+  io.to(documentId.toString()).emit("collaborator_role_updated", {
+    docId: documentId,
+    userId,
+    newRole,
+    updatedBy: req.user._id,
+    });
+
   return res
     .status(200)
     .json(
@@ -205,77 +239,7 @@ const updateCollaboratorRole = asyncHandler(async (req, res) => {
     );
 });
 
-const transferOwnership = asyncHandler(async (req, res) => {
-  const { documentId } = req.params;
-  const { userId } = req.body;
 
-  const session = await mongoose.startSession();
-
-  try {
-    session.startTransaction();
-
-    const [document, collaborator] = await Promise.all([
-      Document.findOne({
-        _id: documentId,
-        status: "active",
-        owner: req.user._id,
-      }).session(session),
-
-      Collaborator.findOne({
-        document: documentId,
-        user: userId,
-      }).session(session),
-    ]);
-
-    if (!document) {
-      throw new ApiError(404, "Document not found or not authorized");
-    }
-
-    if (!collaborator) {
-      throw new ApiError(400, "New owner must be an existing collaborator");
-    }
-
-    if (userId === req.user._id.toString()) {
-      throw new ApiError(400, "You are already the owner");
-    }
-
-    await Promise.all([
-      Document.updateOne(
-        { _id: documentId },
-        { $set: { owner: userId } },
-        { session },
-      ),
-
-      Collaborator.deleteOne(
-        { document: documentId, user: userId },
-        { session },
-      ),
-
-      Collaborator.create(
-        [
-          {
-            document: documentId,
-            user: req.user._id,
-            role: "editor",
-            invitedBy: req.user._id,
-          },
-        ],
-        { session },
-      ),
-    ]);
-
-    await session.commitTransaction();
-
-    return res
-      .status(200)
-      .json(new ApiResponse(200, {}, "Ownership transferred successfully"));
-  } catch (error) {
-    await session.abortTransaction();
-    throw error;
-  } finally {
-    session.endSession();
-  }
-});
 
 export {
   addCollaborator,
@@ -283,5 +247,4 @@ export {
   getCollaborators,
   leaveDocument,
   updateCollaboratorRole,
-  transferOwnership,
 };
