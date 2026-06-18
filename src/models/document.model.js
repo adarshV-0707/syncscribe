@@ -21,10 +21,6 @@ const documentSchema = new Schema(
       required: true,
       index: true,
     },
-    isPublic: {
-      type: Boolean,
-      default: false,
-    },
     status: {
       type: String,
       enum: ["active", "archived", "deleted"],

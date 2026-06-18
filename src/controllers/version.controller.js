@@ -1,4 +1,4 @@
-// src/controllers/versionController.js
+import mongoose from "mongoose";
 import { asyncHandler } from "../utils/AsyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
@@ -6,55 +6,13 @@ import { Version } from "../models/version.model.js";
 import { applyDelta } from "../utils/deltaHelpers.js";
 import { assertDocumentAccess } from "../utils/assertDocumentAccess.js";
 import { createVersionCore } from "../services/versionService.js";
+import { getIO } from "../utils/socket/socketInstance.js";
 
-// mongoose import removed — controller no longer opens sessions directly
-// computeDelta import removed — only needed inside versionService now
-
-// ─────────────────────────────────────────────────────────────────
-// POST /:documentId/versions
-// Thin HTTP wrapper around createVersionCore
-// Permission check here — content fetch happens inside the service
-// ─────────────────────────────────────────────────────────────────
-const createVersion = asyncHandler(async (req, res) => {
-  const { documentId } = req.params;
-  const { label } = req.body;
-
-  // Only permission check — no selectFields needed, no content fetched here
-  const document = await assertDocumentAccess(documentId, req.user._id, {
-    requireEditor: true,
-    selectFields: "content",
-  });
-
-  // All core logic delegated to service
-  const savedVersion = await createVersionCore({
-    documentId,
-    documentContent: document.content,
-    userId: req.user._id,
-    label,
-  });
-
-  const responseData = {
-    _id: savedVersion._id,
-    documentId: savedVersion.documentId,
-    versionNumber: savedVersion.versionNumber,
-    type: savedVersion.type,
-    label: savedVersion.label,
-    createdBy: {
-      _id: req.user._id,
-      name: req.user.name,
-      username: req.user.username,
-    },
-    createdAt: savedVersion.createdAt,
-  };
-
-  return res
-    .status(201)
-    .json(new ApiResponse(201, responseData, "Version saved successfully"));
-});
 
 // ─────────────────────────────────────────────────────────────────
 // GET /:documentId/versions
 // Owner or any collaborator — paginated version history
+// No changes needed — new fields auto-included by exclusion select
 // ─────────────────────────────────────────────────────────────────
 const listVersions = asyncHandler(async (req, res) => {
   const { documentId } = req.params;
@@ -97,7 +55,7 @@ const listVersions = asyncHandler(async (req, res) => {
 
 // ─────────────────────────────────────────────────────────────────
 // GET /:documentId/versions/:versionId
-// Owner or any collaborator — reconstructs content from snapshot or diff
+// Fetch by _id — includes content reconstruction
 // ─────────────────────────────────────────────────────────────────
 const getVersion = asyncHandler(async (req, res) => {
   const { documentId, versionId } = req.params;
@@ -136,24 +94,113 @@ const getVersion = asyncHandler(async (req, res) => {
     content = applyDelta(snapshot.content, version.delta);
   }
 
-  const responseData = {
-    _id: version._id,
-    documentId: version.documentId,
-    versionNumber: version.versionNumber,
-    type: version.type,
-    label: version.label ?? null,
-    createdBy: version.createdBy ?? {
-      _id: null,
-      name: "Deleted User",
-      username: null,
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        _id: version._id,
+        documentId: version.documentId,
+        versionNumber: version.versionNumber,
+        type: version.type,
+        label: version.label ?? null,
+        basedOnVersion: version.basedOnVersion,
+        wasConflicted: version.wasConflicted,
+        saveType: version.saveType,
+        createdBy: version.createdBy ?? {
+          _id: null,
+          name: "Deleted User",
+          username: null,
+        },
+        createdAt: version.createdAt,
+        content,
+      },
+      "Version fetched successfully",
+    ),
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────
+// GET /:documentId/versions/contributions
+// NEW — contribution tracking per user
+// ─────────────────────────────────────────────────────────────────
+const getContributions = asyncHandler(async (req, res) => {
+  const { documentId } = req.params;
+  const userId = req.user._id;
+
+  await assertDocumentAccess(documentId, userId, {requireOwner:true});
+
+  const contributions = await Version.aggregate([
+    { $match: { documentId: new mongoose.Types.ObjectId(documentId) } },
+    {
+      $group: {
+        _id: "$createdBy",
+        versionCount: { $sum: 1 },
+        versionNumbers: { $push: "$versionNumber" },
+        firstEdit: { $min: "$createdAt" },
+        lastEdit: { $max: "$createdAt" },
+        conflictedSaves: {
+          $sum: { $cond: ["$wasConflicted", 1, 0] },
+        },
+        resolutionSaves: {
+          $sum: {
+            $cond: [{ $eq: ["$saveType", "conflict_resolution"] }, 1, 0],
+          },
+        },
+        autosaves: {
+          $sum: { $cond: [{ $eq: ["$saveType", "autosave"] }, 1, 0] },
+        },
+        manualSaves: {
+          $sum: { $cond: [{ $eq: ["$saveType", "manual"] }, 1, 0] },
+        },
+        restores: {
+          $sum: { $cond: [{ $eq: ["$saveType", "restore"] }, 1, 0] },
+        },
+      },
     },
-    createdAt: version.createdAt,
-    content,
-  };
+    {
+      $lookup: {
+        from: "users",
+        localField: "_id",
+        foreignField: "_id",
+        as: "user",
+      },
+    },
+    { $unwind: "$user" },
+    {
+      $project: {
+        _id: 0,
+        userId: "$_id",
+        name: "$user.name",
+        username: "$user.username",
+        versionCount: 1,
+        versionNumbers: 1,
+        firstEdit: 1,
+        lastEdit: 1,
+        conflictedSaves: 1,
+        resolutionSaves: 1,
+        autosaves: 1,
+        manualSaves: 1,
+        restores: 1,
+      },
+    },
+    { $sort: { versionCount: -1 } },
+  ]);
 
   return res
     .status(200)
-    .json(new ApiResponse(200, responseData, "Version fetched successfully"));
+    .json(
+      new ApiResponse(
+        200,
+        contributions,
+        "Contributions fetched successfully",
+      ),
+    );
 });
 
-export { createVersion, listVersions, getVersion };
+export {
+  createVersion,
+  listVersions,
+  getVersion,
+  getVersionByNumber,
+  getContributions,
+};

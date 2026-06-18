@@ -101,7 +101,7 @@ export const createVersionCore = async ({
     }
 
     // ─── STEP 2: Snapshot vs Diff (unchanged logic) ───────────────────
-    const isSnapshot = (newVersionNumber - 1) % SNAPSHOT_INTERVAL === 0;
+    const isSnapshot = !wasConflicted && (newVersionNumber - 1) % SNAPSHOT_INTERVAL === 0;
 
     const payload = {
       documentId,
@@ -121,6 +121,7 @@ export const createVersionCore = async ({
       const nearestSnapshot = await Version.findOne({
         documentId,
         type: "snapshot",
+        wasConflicted: false,
         versionNumber: { $lt: newVersionNumber },
       })
         .sort({ versionNumber: -1 })

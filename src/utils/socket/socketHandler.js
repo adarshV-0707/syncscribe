@@ -72,7 +72,7 @@ export const initSocketHandler = (io) => {
     socket.on(
       "trigger_save",
       async ({ docId, content, label, baseVersionNumber, saveType }) => {
-        if (!docId || !content) {
+        if (!docId || !content || content.trim() === "") {
           socket.emit("socket_error", {
             event: "trigger_save",
             message: "docId and content are required",
@@ -131,6 +131,7 @@ export const initSocketHandler = (io) => {
 
             socket.emit("conflict_detected", {
               docId,
+              versionId: result.savedVersion._id,
               yourVersionNumber: result.savedVersion.versionNumber,
               currentContent: result.currentContent,
               yourContent: content,

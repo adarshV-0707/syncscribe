@@ -112,14 +112,6 @@ BLOCKED_OPS.forEach((op) => {
  *
  * Usage: const next = await Version.nextVersionNumber(documentId, session);
  */
-versionSchema.statics.nextVersionNumber = async function (documentId, session) {
-  const latest = await this.findOne({ documentId })
-    .sort({ versionNumber: -1 })
-    .select("versionNumber")
-    .session(session ?? null)
-    .lean();
 
-  return latest ? latest.versionNumber + 1 : 1;
-};
 
 export const Version = mongoose.model("Version", versionSchema);

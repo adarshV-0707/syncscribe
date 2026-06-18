@@ -37,6 +37,61 @@ const createDocument = asyncHandler(async (req, res) => {
     .json(new ApiResponse(201, document, "Document created successfully"));
 });
 
+const getDocument = asyncHandler(async (req, res) => {
+  const { documentId } = req.params;
+  
+  const document = await Document.findOne({
+    _id: documentId,
+    status: "active",
+  })
+    .populate("owner", "name username avatar")
+    .populate("lastEditedBy", "name username avatar");
+
+  if (!document) {
+    throw new ApiError(404, "Document not found");
+  }
+
+  const isOwner = document.owner._id.toString() === req.user._id.toString();
+
+  // ─── SCENARIO 1: The user is the Owner ───
+  if (isOwner) {
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          document,
+          role: "owner", // Calculated on the fly for the frontend UI
+          latestVersion: document.latestVersion,
+        },
+        "Document fetched successfully",
+      )
+    );
+  }
+
+  // ─── SCENARIO 2: The user is a Collaborator ───
+  const collaborator = await Collaborator.findOne({
+    document: documentId,
+    user: req.user._id,
+  });
+
+  if (!collaborator) {
+    // If they aren't the owner AND aren't a collaborator, kick them out.
+    throw new ApiError(403, "User does not have access to this document");
+  }
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        document,
+        role: collaborator.role, // Grabbed from the Collaborator database model
+        latestVersion: document.latestVersion,
+      },
+      "Document fetched successfully",
+    )
+  );
+});
+
 const updateDocumentInfo = asyncHandler(async (req, res) => {
   const { documentId } = req.params;
   const { newTitle, newDescription } = req.body;
@@ -170,62 +225,7 @@ const getSharedDocuments = asyncHandler(async (req, res) => {
   );
 });
 
-const updateDocumentInfo = asyncHandler(async (req, res) => {
-  const { documentId } = req.params;
-  const [newTitle, newDescription] = [
-    req.body.newTitle,
-    req.body.newDescription,
-  ].map((f) => f?.trim());
-
-  if (!newTitle && !newDescription) {
-    throw new ApiError(400, "At least one field is required to update");
-  }
-
-  const document = await Document.findById(documentId);
-
-  if (!document || document.status !== "active") {
-    throw new ApiError(404, "Document not found");
-  }
-
-  const isOwner = document.owner.equals(req.user._id);
-  if (!isOwner) {
-    const isEditor = await Collaborator.exists({
-      document: documentId,
-      user: req.user._id,
-      role: { $in: ["editor"] },
-    });
-
-    if (!isEditor) {
-      throw new ApiError(403, "Viewers are not allowed to update the document");
-    }
-  }
-
-  const updateFields = {};
-  if (newTitle) updateFields.title = newTitle;
-  if (newDescription) updateFields.description = newDescription;
-  updateFields.lastEditedBy = req.user._id;
-  updateFields.lastEditedAt = new Date();
-
-  const updatedDocument = await Document.findByIdAndUpdate(
-    documentId,
-    { $set: updateFields },
-    { new: true, runValidators: true },
-  )
-    .populate("owner", "name username avatar")
-    .populate("lastEditedBy", "name username avatar");
-
-  return res
-    .status(200)
-    .json(
-      new ApiResponse(
-        200,
-        updatedDocument,
-        "Document info updated successfully",
-      ),
-    );
-});
-
-const updateDocumentContent = asyncHandler(async (req, res) => {
+/*const updateDocumentContent = asyncHandler(async (req, res) => {
   const { documentId } = req.params;
   const { content, baseVersionNumber, saveType } = req.body;
 
@@ -285,12 +285,13 @@ const updateDocumentContent = asyncHandler(async (req, res) => {
     );
   } else {
     // CONFLICT — no broadcast, return conflict info to caller
-    return res.status(409).json(
+    return res.status(200).json(
       new ApiResponse(
-        409,
+        200,
         {
           versionNumber: result.savedVersion.versionNumber,
           wasConflicted: true,
+          currentVersionNumber: result.savedVersion.versionNumber - 1,
           currentContent: result.currentContent,
           yourContent: content,
           basedOnVersion: baseVersionNumber,
@@ -299,7 +300,7 @@ const updateDocumentContent = asyncHandler(async (req, res) => {
       ),
     );
   }
-});
+});*/
 
 const deleteDocument = asyncHandler(async (req, res) => {
   const { documentId } = req.params;

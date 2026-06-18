@@ -5,7 +5,7 @@ import { Collaborator } from "../models/collaborator.model.js";
 export const assertDocumentAccess = async (
   documentId,
   userId,
-  { requireEditor = false, selectFields = "" } = {},
+  { requireEditor = false, requireOwner = false, selectFields = "" } = {},
 ) => {
   const document = await Document.findOne({
     _id: documentId,
@@ -17,6 +17,10 @@ export const assertDocumentAccess = async (
   if (!document) throw new ApiError(404, "Document not found");
 
   if (document.owner.equals(userId)) return document;
+
+  // Owner-only routes reject non-owners immediately
+  if (requireOwner)
+    throw new ApiError(403, "Owner access required");
 
   const query = { document: documentId, user: userId };
   if (requireEditor) query.role = "editor";
