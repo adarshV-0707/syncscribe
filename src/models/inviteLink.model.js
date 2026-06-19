@@ -24,6 +24,7 @@ const inviteLinkSchema = new Schema(
     usedCount: {
       type: Number,
       default: 0,
+      min:0
     },
     expiresAt: {
       type: Date,
@@ -45,7 +46,7 @@ const inviteLinkSchema = new Schema(
 );
 
 // ✅ Token lookup — every join hits this
-inviteLinkSchema.index({ tokenHash: 1 });
+inviteLinkSchema.index({ tokenHash: 1} , {unique:true});
 
 // ✅ Document + active — owner managing links
 inviteLinkSchema.index({ document: 1, isActive: 1 });
