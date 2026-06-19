@@ -10,6 +10,7 @@ import inviteLinkRouter from "./routes/invite_link.route.js";
 
 const app = express();
 
+app.set("trust proxy", 1);
 app.use(helmet());
 app.use(morgan("dev"));
 app.use(
