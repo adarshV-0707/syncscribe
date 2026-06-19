@@ -6,8 +6,7 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { InviteLink } from "../models/inviteLink.model.js";
 import { Document } from "../models/document.model.js";
 import { Collaborator } from "../models/collaborator.model.js";
-import { getIO } from "../utils/socket/socketInstance.js";
-
+import { assertDocumentAccess } from "../utils/assertDocumentAccess.js";
 
 const hashToken = (token) =>
   crypto.createHash("sha256").update(token).digest("hex");
@@ -29,10 +28,13 @@ const createInviteLink = asyncHandler(async (req, res) => {
 
   let parsedMaxUses = null;
   if (maxUses !== undefined && maxUses !== null && maxUses !== "") {
-    parsedMaxUses = parseInt(maxUses);
-    if (isNaN(parsedMaxUses) || parsedMaxUses < 1) {
+    const maxUsesNumber = Number(maxUses);
+
+    if (!Number.isInteger(maxUsesNumber) || maxUsesNumber < 1) {
       throw new ApiError(400, "maxUses must be a positive integer");
     }
+
+    parsedMaxUses = maxUsesNumber;
   }
 
   let parsedExpiresAt = null;
@@ -46,13 +48,10 @@ const createInviteLink = asyncHandler(async (req, res) => {
     }
   }
 
-  const document = await Document.findOne({
-    _id: documentId,
-    owner: userId,
-    status: "active",
-  });
-  if (!document)
-    throw new ApiError(404, "Document not found or you are not the owner");
+  await assertDocumentAccess(documentId, userId,{
+     requireOwner: true 
+    });
+  
 
   const rawToken = crypto.randomBytes(32).toString("hex");
   const tokenHash = hashToken(rawToken);
@@ -96,13 +95,10 @@ const getInviteLinks = asyncHandler(async (req, res) => {
   const { documentId } = req.params;
   const userId = req.user._id;
 
-  const document = await Document.findOne({
-    _id: documentId,
-    owner: userId,
-    status: "active",
+  const document = await assertDocumentAccess( documentId, userId,{ 
+    requireOwner: true 
   });
-  if (!document)
-    throw new ApiError(404, "Document not found or you are not the owner");
+  
 
   const inviteLinks = await InviteLink.find({
     document: documentId,
@@ -127,14 +123,10 @@ const revokeInviteLink = asyncHandler(async (req, res) => {
   const { documentId, linkId } = req.params;
   const userId = req.user._id;
 
-  const document = await Document.findOne({
-    _id: documentId,
-    owner: userId,
-    status: "active",
+  const document = await assertDocumentAccess(documentId,userId,{ 
+    requireOwner: true 
   });
-  if (!document)
-    throw new ApiError(404, "Document not found or you are not the owner");
-
+  
   const inviteLink = await InviteLink.findOneAndUpdate(
     { _id: linkId, document: documentId, isActive: true },
     { isActive: false },
@@ -285,22 +277,11 @@ const joinViaInviteLink = asyncHandler(async (req, res) => {
           ],
           { session },
         );
-
-        await session.commitTransaction();
-
-        // ── Socket: notify room about new collaborator ──
-        const io = getIO();
-        io.to(documentId.toString()).emit("collaborator_added", {
-          docId: documentId,
-          collaborator: {
-            userId,
-            role: claimed.role,
-            joinedVia: "invite_link",
-          },
-        });
-
+        await session.commitTransaction(); 
         break;
-      } catch (err) {
+      } 
+      
+      catch (err) {
         await session.abortTransaction();
 
         if (err.hasErrorLabel?.("TransientTransactionError") && attempt < 2)
