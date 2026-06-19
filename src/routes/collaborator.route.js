@@ -1,35 +1,32 @@
 import { Router } from "express";
 import {
-  addCollaborator,
   removeCollaborator,
   updateCollaboratorRole,
   getCollaborators,
   leaveDocument,
-  transferOwnership,
 } from "../controllers/collaborator.controller.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 
 const router = Router();
+
 router.use(verifyJWT);
 
-// ==========================
-// 👥 COLLABORATORS
-// ==========================
-router
-  .route("/:documentId/collaborators")
-  .post(addCollaborator)
-  .get(getCollaborators);
+// Get all collaborators for a document
+router.get("/:documentId/collaborators", getCollaborators);
 
-// ==========================
-// 🚪 LEAVE & TRANSFER — static before dynamic
-// ==========================
-router.delete("/:documentId/collaborators/leave", leaveDocument);
-router.patch("/:documentId/collaborators/transfer", transferOwnership);
+// Current logged-in collaborator leaves the document
+router.delete("/:documentId/leave", leaveDocument);
 
-// ==========================
-// 👤 SINGLE COLLABORATOR — dynamic after static
-// ==========================
-router.delete("/:documentId/collaborators/:collaboratorId", removeCollaborator);
-router.patch("/:documentId/collaborators/:userId/role", updateCollaboratorRole);
+// Owner removes a collaborator by Collaborator document _id
+router.delete(
+  "/:documentId/collaborators/:collaboratorId",
+  removeCollaborator,
+);
+
+// Owner updates collaborator role by User _id
+router.patch(
+  "/:documentId/collaborators/:userId/role",
+  updateCollaboratorRole,
+);
 
 export default router;
