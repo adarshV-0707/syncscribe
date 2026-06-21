@@ -35,6 +35,7 @@ export const createVersionCore = async ({
     const casResult = await Document.findOneAndUpdate(
       {
         _id: documentId,
+        status: "active",
         latestVersion: baseVersionNumber,
       },
       {
@@ -55,39 +56,21 @@ export const createVersionCore = async ({
       newVersionNumber = casResult.latestVersion;
       wasConflicted = false;
 
-    } else if (saveType === "conflict_resolution") {
-      // ─── RESOLUTION BYPASS ────────────────────────────────────────────
-      // CAS failed but this is an intentional resolution — force-update content
-      const forceResult = await Document.findOneAndUpdate(
-        { _id: documentId },
-        {
-          $inc: { latestVersion: 1 },
-          $set: {
-            content: documentContent,
-            lastEditedBy: userId,
-            lastEditedAt: new Date(),
-          },
-        },
-        { new: true, session },
-      );
-
-      if (!forceResult) {
-        throw new ApiError(404, "Document not found");
-      }
-
-      newVersionNumber = forceResult.latestVersion;
-      wasConflicted = false; // Resolutions are treated as clean saves
-
-    } else {
+    }  else {
       // ─── CONFLICT PATH ────────────────────────────────────────────────
       // Someone else saved. Preserve user's content in version history
       // but DO NOT update Document.content (canonical stays untouched)
       const conflictResult = await Document.findOneAndUpdate(
-        { _id: documentId },
+
+        { _id: documentId,
+          status: "active"
+        },
+
         {
           $inc: { latestVersion: 1 },
           // content NOT updated — canonical stays as-is
         },
+
         { new: true, session },
       );
 
@@ -143,13 +126,17 @@ export const createVersionCore = async ({
     [savedVersion] = await Version.create([payload], { session });
 
     await session.commitTransaction();
-  } catch (err) {
+  } 
+  
+  catch (err) {
     await session.abortTransaction();
     if (err.code === 11000) {
       throw new ApiError(409, "Version conflict — please retry");
     }
     throw err;
-  } finally {
+  } 
+  
+  finally {
     session.endSession();
   }
 
