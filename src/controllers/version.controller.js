@@ -5,8 +5,6 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { Version } from "../models/version.model.js";
 import { applyDelta } from "../utils/deltaHelpers.js";
 import { assertDocumentAccess } from "../utils/assertDocumentAccess.js";
-import { createVersionCore } from "../services/versionService.js";
-import { getIO } from "../utils/socket/socketInstance.js";
 
 
 // ─────────────────────────────────────────────────────────────────
@@ -21,7 +19,7 @@ const listVersions = asyncHandler(async (req, res) => {
   await assertDocumentAccess(documentId, userId);
 
   const page = Math.max(parseInt(req.query.page) || 1, 1);
-  const limit = Math.min(parseInt(req.query.limit) || 20, 50);
+  const limit = Math.min(Math.max(parseInt(req.query.limit) || 30, 1), 50);
   const skip = (page - 1) * limit;
 
   const [versions, total] = await Promise.all([
@@ -85,13 +83,17 @@ const getVersion = asyncHandler(async (req, res) => {
       .select("content")
       .lean();
 
-    if (!snapshot)
+    if (!snapshot){
       throw new ApiError(
         500,
         "Referenced snapshot not found — version chain is broken",
       );
+    }
 
     content = applyDelta(snapshot.content, version.delta);
+    if (content === false || typeof content !== "string") {
+      throw new ApiError(500, "Failed to reconstruct version content");
+     }
   }
 
   return res.status(200).json(
@@ -130,61 +132,41 @@ const getContributions = asyncHandler(async (req, res) => {
   await assertDocumentAccess(documentId, userId, {requireOwner:true});
 
   const contributions = await Version.aggregate([
-    { $match: { documentId: new mongoose.Types.ObjectId(documentId) } },
-    {
-      $group: {
-        _id: "$createdBy",
-        versionCount: { $sum: 1 },
-        versionNumbers: { $push: "$versionNumber" },
-        firstEdit: { $min: "$createdAt" },
-        lastEdit: { $max: "$createdAt" },
-        conflictedSaves: {
-          $sum: { $cond: ["$wasConflicted", 1, 0] },
-        },
-        resolutionSaves: {
-          $sum: {
-            $cond: [{ $eq: ["$saveType", "conflict_resolution"] }, 1, 0],
-          },
-        },
-        autosaves: {
-          $sum: { $cond: [{ $eq: ["$saveType", "autosave"] }, 1, 0] },
-        },
-        manualSaves: {
-          $sum: { $cond: [{ $eq: ["$saveType", "manual"] }, 1, 0] },
-        },
-        restores: {
-          $sum: { $cond: [{ $eq: ["$saveType", "restore"] }, 1, 0] },
-        },
-      },
+  {
+    $match: {
+      documentId: new mongoose.Types.ObjectId(documentId),
     },
-    {
-      $lookup: {
-        from: "users",
-        localField: "_id",
-        foreignField: "_id",
-        as: "user",
-      },
+  },
+  {
+    $group: {
+      _id: "$createdBy",
+      versionCount: { $sum: 1 },
+      firstEdit: { $min: "$createdAt" },
+      lastEdit: { $max: "$createdAt" },
     },
-    { $unwind: "$user" },
-    {
-      $project: {
-        _id: 0,
-        userId: "$_id",
-        name: "$user.name",
-        username: "$user.username",
-        versionCount: 1,
-        versionNumbers: 1,
-        firstEdit: 1,
-        lastEdit: 1,
-        conflictedSaves: 1,
-        resolutionSaves: 1,
-        autosaves: 1,
-        manualSaves: 1,
-        restores: 1,
-      },
+  },
+  {
+    $lookup: {
+      from: "users",
+      localField: "_id",
+      foreignField: "_id",
+      as: "user",
     },
-    { $sort: { versionCount: -1 } },
-  ]);
+  },
+  { $unwind: "$user" },
+  {
+    $project: {
+      _id: 0,
+      userId: "$_id",
+      name: "$user.name",
+      username: "$user.username",
+      versionCount: 1,
+      firstEdit: 1,
+      lastEdit: 1,
+    },
+  },
+  { $sort: { versionCount: -1 } },
+]);
 
   return res
     .status(200)
@@ -198,9 +180,7 @@ const getContributions = asyncHandler(async (req, res) => {
 });
 
 export {
-  createVersion,
   listVersions,
   getVersion,
-  getVersionByNumber,
   getContributions,
 };
