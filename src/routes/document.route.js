@@ -1,17 +1,12 @@
 import { Router } from "express";
 import {
-  createDocument,
   getDocument,
-  getAllDocuments,
+  getOwnedActiveDocuments,
   getSharedDocuments,
   updateDocumentInfo,
-  updateDocumentContent,
   deleteDocument,
   restoreDocument,
-  archiveDocument,
-  getArchivedDocuments,
   getDeletedDocuments,
-  togglePublic,
   searchDocument,
   permanentDeleteDocument,
 } from "../controllers/document.controller.js";
@@ -23,7 +18,7 @@ router.use(verifyJWT);
 // ==========================
 // 📄 COLLECTION
 // ==========================
-router.route("/").post(createDocument).get(getAllDocuments);
+router.route("/").post(createDocument).get(getOwnedActiveDocuments);
 
 // ==========================
 // 🔍 UTILITY
@@ -34,7 +29,6 @@ router.get("/search", searchDocument);
 // 📦 FILTERED COLLECTIONS
 // ==========================
 router.get("/shared", getSharedDocuments);
-router.get("/archived", getArchivedDocuments);
 router.get("/deleted", getDeletedDocuments);
 
 // ==========================
@@ -46,21 +40,12 @@ router
   .patch(updateDocumentInfo)
   .delete(deleteDocument);
 
-// ==========================
-// ✏️ CONTENT
-// ==========================
-router.patch("/:documentId/content", updateDocumentContent);
 
 // ==========================
 // 📦 STATE TRANSITIONS
 // ==========================
-router.patch("/:documentId/status/archive", archiveDocument);
-router.patch("/:documentId/status/restore", restoreDocument);
+router.patch("/:documentId/restore", restoreDocument);
 
-// ==========================
-// 🌍 VISIBILITY
-// ==========================
-router.patch("/:documentId/visibility", togglePublic);
 
 // ==========================
 // 🗑️ PERMANENT DELETE
