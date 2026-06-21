@@ -1,8 +1,7 @@
 import { createVersionCore } from "../../services/versionService.js";
 import { socketAuthMiddleware } from "../../middlewares/socket.middleware.js";
 import { assertDocumentAccess } from "../assertDocumentAccess.js";
-
-const activeUsers = new Map();
+import { activeUsers } from "./activeUsersStore.js";
 
 const removeSocketFromActiveUsers = (io, socket, docId) => {
   if (!docId) return;
@@ -151,6 +150,8 @@ export const initSocketHandler = (io) => {
           return;
         }
 
+          
+
         try {
           const roomId = docId.toString();
 
@@ -207,6 +208,14 @@ export const initSocketHandler = (io) => {
               basedOnVersion: baseVersionNumber,
               message:
                 "Your changes conflicted with recent edits. Your version has been preserved.",
+            });
+
+            // others only
+            socket.to(roomId).emit("version_created", {
+              docId: roomId,
+              versionId: result.savedVersion._id.toString(),
+              versionNumber: result.savedVersion.versionNumber,
+              wasConflicted: true,
             });
           }
         } catch (err) {
