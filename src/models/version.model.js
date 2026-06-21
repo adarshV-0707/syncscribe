@@ -59,7 +59,7 @@ const versionSchema = new Schema(
     },
     saveType: {
       type: String,
-      enum: ["autosave", "manual", "conflict_resolution", "restore"],
+      enum: ["autosave", "manual", "conflict_resolution"],
       default: "autosave",
     },
   },
@@ -103,15 +103,6 @@ BLOCKED_OPS.forEach((op) => {
   });
 });
 
-// ─── Statics ─────────────────────────────────────────────────────────────────
-
-/**
- * Derives the next version number for a document.
- * Must be called inside the same transaction as Version.create()
- * so the session is propagated and the read + write are atomic.
- *
- * Usage: const next = await Version.nextVersionNumber(documentId, session);
- */
 
 
 export const Version = mongoose.model("Version", versionSchema);
