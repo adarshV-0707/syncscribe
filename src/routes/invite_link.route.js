@@ -19,8 +19,8 @@ const router = Router();
 // createInviteLink: rate limiter before JWT — blocks exhausted IPs before auth layer
 router.post(
   "/:documentId/invite-links",
-  createInviteLinkRateLimiter,
   verifyJWT,
+  createInviteLinkRateLimiter,
   createInviteLink,
 );
 router.get("/:documentId/invite-links", verifyJWT, getInviteLinks);

@@ -23,7 +23,7 @@ const documentSchema = new Schema(
     },
     status: {
       type: String,
-      enum: ["active", "archived", "deleted"],
+      enum: ["active", "deleted"],
       default: "active",
     },
     latestVersion: {

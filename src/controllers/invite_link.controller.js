@@ -147,36 +147,54 @@ const revokeInviteLink = asyncHandler(async (req, res) => {
 // ─────────────────────────────────────────
 const previewInviteLink = asyncHandler(async (req, res) => {
   const { token } = req.params;
-  const tokenHash = hashToken(token);
 
-  const inviteLink = await InviteLink.findOne({
-    tokenHash,
-    isActive: true,
-    $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
-    $expr: {
-      $or: [{ $eq: ["$maxUses", null] }, { $lt: ["$usedCount", "$maxUses"] }],
-    },
-  })
-    .populate("document", "title description")
+  if (!token) {
+    throw new ApiError(400, "Invite token is required");
+  }
+
+  const tokenHash = hashToken(token);
+  const now = new Date();
+
+  const inviteLink = await InviteLink.findOne({ tokenHash })
     .populate("createdBy", "name username")
     .lean();
 
   if (!inviteLink) {
-    const existing = await InviteLink.findOne({ tokenHash }).lean();
-    if (!existing) throw new ApiError(404, "Invite link is invalid");
-    if (!existing.isActive)
-      throw new ApiError(410, "Invite link has been revoked");
-    if (existing.expiresAt && existing.expiresAt < new Date()) {
-      throw new ApiError(410, "Invite link has expired");
-    }
+    throw new ApiError(404, "Invite link is invalid");
+  }
+
+  if (!inviteLink.isActive) {
+    throw new ApiError(410, "Invite link has been revoked");
+  }
+
+  if (inviteLink.expiresAt && inviteLink.expiresAt <= now) {
+    throw new ApiError(410, "Invite link has expired");
+  }
+
+  if (
+    inviteLink.maxUses !== null &&
+    inviteLink.usedCount >= inviteLink.maxUses
+  ) {
     throw new ApiError(
       410,
       "Invite link has reached its maximum number of uses",
     );
   }
 
+  const document = await Document.findOne({
+    _id: inviteLink.document,
+    status: "active",
+  })
+    .select("title description owner")
+    .populate("owner", "name username")
+    .lean();
+
+  if (!document) {
+    throw new ApiError(404, "Document is no longer available");
+  }
+
   const data = {
-    document: inviteLink.document,
+    document,
     role: inviteLink.role,
     expiresAt: inviteLink.expiresAt,
     createdBy: inviteLink.createdBy,
@@ -188,7 +206,6 @@ const previewInviteLink = asyncHandler(async (req, res) => {
       new ApiResponse(200, data, "Invite link preview fetched successfully"),
     );
 });
-
 // ─────────────────────────────────────────
 // POST /join/:token
 // Race condition architecture:
@@ -204,38 +221,19 @@ const joinViaInviteLink = asyncHandler(async (req, res) => {
   const userId = req.user._id;
   const tokenHash = hashToken(token);
 
-  // ── Phase 1: Lightweight — existence + active only ──
-  const inviteLink = await InviteLink.findOne({ tokenHash });
-  if (!inviteLink) throw new ApiError(404, "Invite link is invalid");
-  if (!inviteLink.isActive)
-    throw new ApiError(410, "Invite link has been revoked");
-
-  const documentId = inviteLink.document;
-
-  const [document, existingCollaborator] = await Promise.all([
-    Document.findOne({ _id: documentId, status: "active" }),
-    Collaborator.findOne({ document: documentId, user: userId }),
-  ]);
-
-  if (!document) throw new ApiError(404, "Document is no longer available");
-  if (document.owner.equals(userId)) {
-    throw new ApiError(400, "You are already the owner of this document");
-  }
-  if (existingCollaborator) {
-    throw new ApiError(409, "You are already a collaborator on this document");
-  }
-
-  // ── Phase 2: Transaction with TransientTransactionError retry ──
   const session = await mongoose.startSession();
+
   let claimed = null;
+  let document = null;
 
   try {
     for (let attempt = 0; attempt < 3; attempt++) {
       session.startTransaction();
+
       try {
         claimed = await InviteLink.findOneAndUpdate(
           {
-            _id: inviteLink._id,
+            tokenHash,
             isActive: true,
             $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
             $expr: {
@@ -250,42 +248,44 @@ const joinViaInviteLink = asyncHandler(async (req, res) => {
         );
 
         if (!claimed) {
-          const failed = await InviteLink.findById(inviteLink._id).lean();
-          if (failed.expiresAt && failed.expiresAt < new Date()) {
-            throw new ApiError(410, "Invite link has expired");
-          }
-          if (failed.maxUses !== null && failed.usedCount >= failed.maxUses) {
-            throw new ApiError(
-              410,
-              "Invite link has reached its maximum number of uses",
-            );
-          }
-          throw new ApiError(
-            409,
-            "Invite link was just exhausted, please try again",
-          );
+          throw new ApiError(410, "Invite link is invalid or no longer valid");
+        }
+
+        document = await Document.findOne({
+          _id: claimed.document,
+          status: "active",
+        })
+          .select("owner")
+          .session(session);
+
+        if (!document) {
+          throw new ApiError(404, "Document is no longer available");
+        }
+
+        if (document.owner.equals(userId)) {
+          throw new ApiError(400, "You are already the owner of this document");
         }
 
         await Collaborator.create(
           [
             {
-              document: documentId,
+              document: claimed.document,
               user: userId,
               role: claimed.role,
-              invitedBy: inviteLink.createdBy,
+              invitedBy: claimed.createdBy,
             },
           ],
           { session },
         );
-        await session.commitTransaction(); 
+
+        await session.commitTransaction();
         break;
-      } 
-      
-      catch (err) {
+      } catch (err) {
         await session.abortTransaction();
 
-        if (err.hasErrorLabel?.("TransientTransactionError") && attempt < 2)
+        if (err.hasErrorLabel?.("TransientTransactionError") && attempt < 2) {
           continue;
+        }
 
         if (err.code === 11000) {
           throw new ApiError(
@@ -301,23 +301,20 @@ const joinViaInviteLink = asyncHandler(async (req, res) => {
     session.endSession();
   }
 
-  // ── Post-transaction: deactivate if maxUses hit ──
-  if (claimed.maxUses !== null && claimed.usedCount >= claimed.maxUses) {
-    await InviteLink.updateOne(
-      { _id: claimed._id, isActive: true },
-      { isActive: false },
-    );
+  if (!claimed) {
+    throw new ApiError(409, "Could not join document, please try again");
   }
 
-  return res
-    .status(200)
-    .json(
-      new ApiResponse(
-        200,
-        { documentId, role: claimed.role },
-        "Successfully joined the document",
-      ),
-    );
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        documentId: claimed.document,
+        role: claimed.role,
+      },
+      "Successfully joined the document",
+    ),
+  );
 });
 
 export {
