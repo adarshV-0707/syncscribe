@@ -150,8 +150,6 @@ export const initSocketHandler = (io) => {
           return;
         }
 
-          
-
         try {
           const roomId = docId.toString();
 
