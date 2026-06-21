@@ -7,6 +7,8 @@ import userRouter from "./routes/user.route.js";
 import documentRouter from "./routes/document.route.js";
 import collaboratorRouter from "./routes/collaborator.route.js";
 import inviteLinkRouter from "./routes/invite_link.route.js";
+import versionRouter from "./routes/version.route.js";
+
 
 const app = express();
 
@@ -29,6 +31,7 @@ app.use("/api/v1/users", userRouter);
 app.use("/api/v1/documents", documentRouter);
 app.use("/api/v1/documents", collaboratorRouter);
 app.use("/api/v1/documents", inviteLinkRouter);
+app.use("/api/v1/documents", versionRouter);
 
 app.use((err, req, res, next) => {
   // ✅ Handle invalid MongoDB ID format globally
