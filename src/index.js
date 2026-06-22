@@ -22,9 +22,11 @@ const io = new Server(httpServer, {
 setIO(io);
 initSocketHandler(io);
 
+const PORT = process.env.PORT || 5000;
+
 connectDB()
   .then(() => {
-    httpServer.listen(process.env.PORT || 5000, () => {
+    httpServer.listen(PORT, () => {
       console.log(`Server is running at port: ${process.env.PORT}`);
     });
   })
