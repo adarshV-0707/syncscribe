@@ -6,12 +6,7 @@ import { Version } from "../models/version.model.js";
 import { applyDelta } from "../utils/deltaHelpers.js";
 import { assertDocumentAccess } from "../utils/assertDocumentAccess.js";
 
-
-// ─────────────────────────────────────────────────────────────────
-// GET /:documentId/versions
-// Owner or any collaborator — paginated version history
-// No changes needed — new fields auto-included by exclusion select
-// ─────────────────────────────────────────────────────────────────
+// Fetches paginated version history metadata for users who can access the document.
 const listVersions = asyncHandler(async (req, res) => {
   const { documentId } = req.params;
   const userId = req.user._id;
@@ -51,10 +46,7 @@ const listVersions = asyncHandler(async (req, res) => {
   );
 });
 
-// ─────────────────────────────────────────────────────────────────
-// GET /:documentId/versions/:versionId
-// Fetch by _id — includes content reconstruction
-// ─────────────────────────────────────────────────────────────────
+// Fetches a specific version and reconstructs its content when it is stored as a diff.
 const getVersion = asyncHandler(async (req, res) => {
   const { documentId, versionId } = req.params;
   const userId = req.user._id;
@@ -90,6 +82,7 @@ const getVersion = asyncHandler(async (req, res) => {
       );
     }
 
+    // Diff versions are reconstructed by applying their patch to the referenced snapshot.
     content = applyDelta(snapshot.content, version.delta);
     if (content === false || typeof content !== "string") {
       throw new ApiError(500, "Failed to reconstruct version content");
@@ -121,14 +114,12 @@ const getVersion = asyncHandler(async (req, res) => {
   );
 });
 
-// ─────────────────────────────────────────────────────────────────
-// GET /:documentId/versions/contributions
-// NEW — contribution tracking per user
-// ─────────────────────────────────────────────────────────────────
+// Returns contribution stats grouped by the users who created versions.
 const getContributions = asyncHandler(async (req, res) => {
   const { documentId } = req.params;
   const userId = req.user._id;
-
+  
+  // Owner access required as only owner can see stats
   await assertDocumentAccess(documentId, userId, {requireOwner:true});
 
   const contributions = await Version.aggregate([

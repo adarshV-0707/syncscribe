@@ -8,13 +8,11 @@ import { Document } from "../models/document.model.js";
 import { Collaborator } from "../models/collaborator.model.js";
 import { assertDocumentAccess } from "../utils/assertDocumentAccess.js";
 
+// Stores only a hash of the invite token so leaked database records cannot expose usable links.
 const hashToken = (token) =>
   crypto.createHash("sha256").update(token).digest("hex");
 
-// ─────────────────────────────────────────
-// POST /:documentId/invite-links
-// Owner only — returns raw token ONCE, never again
-// ─────────────────────────────────────────
+// Creates an owner-only invite link and returns the raw token only once.
 const createInviteLink = asyncHandler(async (req, res) => {
   let { role, maxUses, expiresAt } = req.body;
   role = role?.trim();
@@ -65,7 +63,7 @@ const createInviteLink = asyncHandler(async (req, res) => {
     createdBy: userId,
   });
 
-  // Explicit allowlist — schema additions never leak to client automatically
+  // Explicit response allowlist prevents tokenHash or future sensitive fields from leaking.
   const responseData = {
     _id: inviteLink._id,
     document: inviteLink.document,
@@ -87,10 +85,7 @@ const createInviteLink = asyncHandler(async (req, res) => {
     );
 });
 
-// ─────────────────────────────────────────
-// GET /:documentId/invite-links
-// Owner only — tokenHash never returned (useless to client)
-// ─────────────────────────────────────────
+// Lists active invite links for the owner without exposing stored token hashes.
 const getInviteLinks = asyncHandler(async (req, res) => {
   const { documentId } = req.params;
   const userId = req.user._id;
@@ -115,10 +110,7 @@ const getInviteLinks = asyncHandler(async (req, res) => {
     );
 });
 
-// ─────────────────────────────────────────
-// PATCH /:documentId/invite-links/:linkId/revoke
-// Owner only — soft delete, preserves usedCount history
-// ─────────────────────────────────────────
+// Soft-revokes an owner-created invite link while preserving its usage history.
 const revokeInviteLink = asyncHandler(async (req, res) => {
   const { documentId, linkId } = req.params;
   const userId = req.user._id;
@@ -140,11 +132,7 @@ const revokeInviteLink = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, null, "Invite link revoked successfully"));
 });
 
-// ─────────────────────────────────────────
-// GET /join/:token
-// Preview before joining — pure read, no state mutation
-// Two-query pattern: optimistic first, diagnostic on miss
-// ─────────────────────────────────────────
+// Validates an invite link for preview without consuming a use.
 const previewInviteLink = asyncHandler(async (req, res) => {
   const { token } = req.params;
 
@@ -206,16 +194,8 @@ const previewInviteLink = asyncHandler(async (req, res) => {
       new ApiResponse(200, data, "Invite link preview fetched successfully"),
     );
 });
-// ─────────────────────────────────────────
-// POST /join/:token
-// Race condition architecture:
-//   Phase 1 — Lightweight: existence + isActive only
-//             Expiry/maxUses intentionally excluded — they're stale on read
-//   Phase 2 — Atomic findOneAndUpdate: real validation gate + slot claim
-//             Diagnostic query after atomic miss gives specific error messages
-//             TransientTransactionError retry (up to 3 attempts)
-//   Post-tx  — isActive deactivation: not correctness-critical, lives outside tx
-// ─────────────────────────────────────────
+
+// Atomically claims one invite use and creates the collaborator in the same transaction.
 const joinViaInviteLink = asyncHandler(async (req, res) => {
   const { token } = req.params;
   const userId = req.user._id;
@@ -231,6 +211,7 @@ const joinViaInviteLink = asyncHandler(async (req, res) => {
       session.startTransaction();
 
       try {
+        // This is the real validity gate, so expired or fully used links cannot be claimed in races.
         claimed = await InviteLink.findOneAndUpdate(
           {
             tokenHash,
@@ -282,11 +263,13 @@ const joinViaInviteLink = asyncHandler(async (req, res) => {
         break;
       } catch (err) {
         await session.abortTransaction();
-
+        
+        // Retry transient transaction failures because MongoDB may ask clients to retry safely.
         if (err.hasErrorLabel?.("TransientTransactionError") && attempt < 2) {
           continue;
         }
-
+        
+         // Duplicate collaborator errors roll back the invite usage increment with the transaction.
         if (err.code === 11000) {
           throw new ApiError(
             409,

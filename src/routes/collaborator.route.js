@@ -17,13 +17,13 @@ router.get("/:documentId/collaborators", getCollaborators);
 // Current logged-in collaborator leaves the document
 router.delete("/:documentId/leave", leaveDocument);
 
-// Owner removes a collaborator by Collaborator document _id
+// Owner removes a collaborator
 router.delete(
   "/:documentId/collaborators/:collaboratorId",
   removeCollaborator,
 );
 
-// Owner updates collaborator role by User _id
+// Owner updates collaborator role
 router.patch(
   "/:documentId/collaborators/:userId/role",
   updateCollaboratorRole,

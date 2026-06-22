@@ -18,7 +18,7 @@ const inviteLinkSchema = new Schema(
     },
     maxUses: {
       type: Number,
-      default: null, // null = unlimited
+      default: null,
       min: 1,
     },
     usedCount: {
@@ -28,7 +28,7 @@ const inviteLinkSchema = new Schema(
     },
     expiresAt: {
       type: Date,
-      default: null, // null = never expires
+      default: null, 
     },
     isActive: {
       type: Boolean,
@@ -45,10 +45,10 @@ const inviteLinkSchema = new Schema(
   },
 );
 
-// ✅ Token lookup — every join hits this
+// Token lookup — every join hits this
 inviteLinkSchema.index({ tokenHash: 1} , {unique:true});
 
-// ✅ Document + active — owner managing links
+// Document + active — owner managing links
 inviteLinkSchema.index({ document: 1, isActive: 1 });
 
 export const InviteLink = mongoose.model("InviteLink", inviteLinkSchema);

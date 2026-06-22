@@ -6,6 +6,7 @@ import { ApiError } from "../utils/ApiError.js";
 
 const SNAPSHOT_INTERVAL = 10;
 
+//Creates a versioned save using CAS conflict detection and snapshot/diff storage.
 export const createVersionCore = async ({
   documentId,
   documentContent,
@@ -30,9 +31,8 @@ export const createVersionCore = async ({
   let currentContent = null;
 
   try {
-    // ─── STEP 1: Atomic CAS on Document ───────────────────────────────
-    // Only succeeds if no one else saved since baseVersionNumber
-    const casResult = await Document.findOneAndUpdate(
+  // Update the document only if the client saved from the latest known version.
+   const casResult = await Document.findOneAndUpdate(
       {
         _id: documentId,
         status: "active",
@@ -52,14 +52,12 @@ export const createVersionCore = async ({
     let newVersionNumber;
 
     if (casResult) {
-      // ─── CLEAN SAVE ──────────────────────────────────────────────────
       newVersionNumber = casResult.latestVersion;
       wasConflicted = false;
 
     }  else {
-      // ─── CONFLICT PATH ────────────────────────────────────────────────
-      // Someone else saved. Preserve user's content in version history
-      // but DO NOT update Document.content (canonical stays untouched)
+      // If another save already happened, keep canonical content unchanged
+      // and store this user's submitted content as a conflicted version.
       const conflictResult = await Document.findOneAndUpdate(
 
         { _id: documentId,
@@ -83,7 +81,7 @@ export const createVersionCore = async ({
       wasConflicted = true;
     }
 
-    // ─── STEP 2: Snapshot vs Diff (unchanged logic) ───────────────────
+    // Clean saves become periodic snapshots; other versions store diffs from the nearest clean snapshot.
     const isSnapshot = !wasConflicted && (newVersionNumber - 1) % SNAPSHOT_INTERVAL === 0;
 
     const payload = {
@@ -112,8 +110,8 @@ export const createVersionCore = async ({
         .session(session)
         .lean();
 
+      // Store a full snapshot if no previous clean snapshot exists.
       if (!nearestSnapshot) {
-        // Graceful degradation — promote to snapshot
         payload.type = "snapshot";
         payload.content = documentContent;
       } else {
@@ -122,7 +120,7 @@ export const createVersionCore = async ({
       }
     }
 
-    // ─── STEP 3: Create immutable version record ──────────────────────
+    // Keep the document version counter and version record atomic.
     [savedVersion] = await Version.create([payload], { session });
 
     await session.commitTransaction();
@@ -143,6 +141,6 @@ export const createVersionCore = async ({
   return {
     savedVersion,
     wasConflicted,
-    currentContent, // null on clean save, canonical content on conflict
+    currentContent, 
   };
 };

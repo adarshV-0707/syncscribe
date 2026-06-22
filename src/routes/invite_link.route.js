@@ -15,8 +15,7 @@ import {
 
 const router = Router();
 
-// ── Owner-only routes ──
-// createInviteLink: rate limiter before JWT — blocks exhausted IPs before auth layer
+// ── Owner-only routes ─
 router.post(
   "/:documentId/invite-links",
   verifyJWT,

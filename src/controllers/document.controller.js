@@ -9,6 +9,7 @@ import { Version } from "../models/version.model.js";
 import { getIO } from "../utils/socket/socketInstance.js";
 import { clearActiveDocumentUsers } from "../utils/socket/activeUsersStore.js";
 
+// Creates a document with its initial snapshot version in one transaction.
 const createDocument = asyncHandler(async (req, res) => {
   const { title, description } = req.body;
 
@@ -73,6 +74,7 @@ const createDocument = asyncHandler(async (req, res) => {
   }
 });
 
+// Fetches an active document and returns the current user's role.
 const getDocument = asyncHandler(async (req, res) => {
   const { documentId } = req.params;
   const userId = req.user._id;
@@ -120,6 +122,7 @@ const getDocument = asyncHandler(async (req, res) => {
   );
 });
 
+// Updates owner-only document metadata without changing document content.
 const updateDocumentInfo = asyncHandler(async (req, res) => {
   const { documentId } = req.params;
   const { newTitle, newDescription } = req.body;
@@ -131,7 +134,6 @@ const updateDocumentInfo = asyncHandler(async (req, res) => {
 
   const updateFields = {};
 
-  // 2. Handle Title: Allow valid strings, reject empty strings
   if (newTitle !== undefined) {
     const title = newTitle.trim();
     if (!title) {
@@ -140,7 +142,6 @@ const updateDocumentInfo = asyncHandler(async (req, res) => {
     updateFields.title = title;
   }
 
-  // 3. Handle Description: Allow clearing the description (saving as empty string)
   if (newDescription !== undefined) {
     updateFields.description = newDescription.trim();
   }
@@ -172,6 +173,7 @@ const updateDocumentInfo = asyncHandler(async (req, res) => {
     );
 });
 
+// Lists the current user's active owned documents with optional title search.
 const getOwnedActiveDocuments = asyncHandler(async (req, res) => {
   const { page = 1, limit = 10, search } = req.query;
   const pageNumber = Math.max(Number(page) || 1, 1);
@@ -214,6 +216,7 @@ const getOwnedActiveDocuments = asyncHandler(async (req, res) => {
   );
 });
 
+// Lists active documents shared with the current user.
 const getSharedDocuments = asyncHandler(async (req, res) => {
   const { page = 1, limit = 10 } = req.query;
 
@@ -266,6 +269,7 @@ const getSharedDocuments = asyncHandler(async (req, res) => {
   );
 });
 
+// Soft deletes an owner document and removes all active sockets from its room.
 const deleteDocument = asyncHandler(async (req, res) => {
   const { documentId } = req.params;
   const deletedDocument = await Document.findOneAndUpdate(
@@ -308,6 +312,7 @@ const deleteDocument = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, {}, "Document deleted successfully"));
 });
 
+// Restores a soft-deleted owner document.
 const restoreDocument = asyncHandler(async (req, res) => {
   const { documentId } = req.params;
 
@@ -334,6 +339,7 @@ const restoreDocument = asyncHandler(async (req, res) => {
     );
 });
 
+// Lists the current user's soft-deleted documents.
 const getDeletedDocuments = asyncHandler(async (req, res) => {
   const { page = 1, limit = 10 } = req.query;
 
@@ -373,6 +379,7 @@ const getDeletedDocuments = asyncHandler(async (req, res) => {
   );
 });
 
+// Searches active document titles across owned and shared documents.
 const searchDocument = asyncHandler(async (req, res) => {
   const { query, page = 1, limit = 10 } = req.query;
 
@@ -419,6 +426,7 @@ const searchDocument = asyncHandler(async (req, res) => {
   );
 });
 
+// Permanently deletes a soft-deleted document and its dependent records.
 const permanentDeleteDocument = asyncHandler(async (req, res) => {
   const { documentId } = req.params;
   const userId = req.user._id;

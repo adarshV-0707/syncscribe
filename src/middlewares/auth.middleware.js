@@ -3,6 +3,7 @@ import { User } from "../models/user.model.js";
 import { asyncHandler } from "../utils/AsyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 
+// Verifies the access token and attaches the authenticated user to the request.
 export const verifyJWT = asyncHandler(async (req, res, next) => {
   const token =
     req.cookies?.accessToken ||

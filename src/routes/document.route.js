@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  createDocument,
   getDocument,
   getOwnedActiveDocuments,
   getSharedDocuments,
@@ -14,42 +15,30 @@ import { verifyJWT } from "../middlewares/auth.middleware.js";
 
 const router = Router();
 router.use(verifyJWT);
-
-// ==========================
-// 📄 COLLECTION
-// ==========================
+// COLLECTION
 router.route("/").post(createDocument).get(getOwnedActiveDocuments);
 
-// ==========================
-// 🔍 UTILITY
-// ==========================
+
+// UTILITY
 router.get("/search", searchDocument);
 
-// ==========================
-// 📦 FILTERED COLLECTIONS
-// ==========================
+// FILTERED COLLECTIONS
 router.get("/shared", getSharedDocuments);
 router.get("/deleted", getDeletedDocuments);
 
-// ==========================
-// 📄 SINGLE DOCUMENT
-// ==========================
+
+// SINGLE DOCUMENT
 router
   .route("/:documentId")
   .get(getDocument)
   .patch(updateDocumentInfo)
   .delete(deleteDocument);
 
-
-// ==========================
-// 📦 STATE TRANSITIONS
-// ==========================
+  
+// STATE TRANSITIONS
 router.patch("/:documentId/restore", restoreDocument);
 
-
-// ==========================
-// 🗑️ PERMANENT DELETE
-// ==========================
+// PERMANENT DELETE
 router.delete("/:documentId/purge", permanentDeleteDocument);
 
 export default router;

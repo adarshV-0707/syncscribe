@@ -3,6 +3,7 @@ import { socketAuthMiddleware } from "../../middlewares/socket.middleware.js";
 import { assertDocumentAccess } from "../assertDocumentAccess.js";
 import { activeUsers } from "./activeUsersStore.js";
 
+// Removes a socket from a document's active-user list and broadcasts the updated presence.
 const removeSocketFromActiveUsers = (io, socket, docId) => {
   if (!docId) return;
 
@@ -26,13 +27,14 @@ const removeSocketFromActiveUsers = (io, socket, docId) => {
   }
 };
 
+// Registers authenticated Socket.IO events for document rooms, active users, and saves.
 export const initSocketHandler = (io) => {
   io.use(socketAuthMiddleware);
 
   io.on("connection", (socket) => {
     console.log(`Socket connected: ${socket.id} — user: ${socket.username}`);
 
-    // ─── EVENT: join_document ─────────────────────────────
+    // EVENT: join_document
     socket.on("join_document", async ({ docId }) => {
       try {
         if (!docId) {
@@ -48,7 +50,7 @@ export const initSocketHandler = (io) => {
         // Check whether this user can access the document before joining room
         await assertDocumentAccess(roomId, socket.userId);
 
-        // If this socket was already inside another document room, leave it first
+        // A socket should track only one active document room at a time.
         if (socket.currentDocId && socket.currentDocId !== roomId) {
           socket.leave(socket.currentDocId);
           removeSocketFromActiveUsers(io, socket, socket.currentDocId);
@@ -61,7 +63,7 @@ export const initSocketHandler = (io) => {
           activeUsers.set(roomId, []);
         }
 
-        // Prevent duplicate active-user entries for same socket
+        // Replace any previous entry for this socket to avoid duplicate active users.
         const existingUsers = activeUsers
           .get(roomId)
           .filter((user) => user.socketId !== socket.id);
@@ -96,7 +98,7 @@ export const initSocketHandler = (io) => {
       }
     });
 
-    // ─── EVENT: leave_document ─────────────────────────────
+    // EVENT: leave_document
     socket.on("leave_document", ({ docId }) => {
       if (!docId) {
         socket.emit("socket_error", {
@@ -130,7 +132,7 @@ export const initSocketHandler = (io) => {
       removeSocketFromActiveUsers(io, socket, docId);
     });
 
-    // ─── EVENT: trigger_save ──────────────────────────────
+    // EVENT: trigger_save 
     socket.on(
       "trigger_save",
       async ({ docId, content, label, baseVersionNumber, saveType }) => {
@@ -153,8 +155,7 @@ export const initSocketHandler = (io) => {
         try {
           const roomId = docId.toString();
 
-          // Save requires editor access.
-          // This is checked every time because role/access may change after room join.
+          // Save access is checked every time because permissions may change after joining.
           await assertDocumentAccess(roomId, socket.userId, {
             requireEditor: true,
           });
@@ -169,7 +170,7 @@ export const initSocketHandler = (io) => {
           });
 
           if (!result.wasConflicted) {
-            // Broadcast clean save to everyone except sender
+            // Clean saves update other clients and confirm success only to the sender.
             socket.to(roomId).emit("version_created", {
               docId: roomId,
               versionId: result.savedVersion._id.toString(),
@@ -178,6 +179,7 @@ export const initSocketHandler = (io) => {
               label: result.savedVersion.label,
               createdBy: result.savedVersion.createdBy.toString(),
               createdAt: result.savedVersion.createdAt,
+              wasConflicted:false
             });
 
             socket.to(roomId).emit("document_updated", {
@@ -196,7 +198,7 @@ export const initSocketHandler = (io) => {
               wasConflicted: false,
             });
           } else {
-            // Conflict is private to sender only
+            // Conflicted content is preserved as a version, but canonical content is sent only to the sender 
             socket.emit("conflict_detected", {
               docId: roomId,
               versionId: result.savedVersion._id.toString(),
@@ -208,7 +210,7 @@ export const initSocketHandler = (io) => {
                 "Your changes conflicted with recent edits. Your version has been preserved.",
             });
 
-            // others only
+            
             socket.to(roomId).emit("version_created", {
               docId: roomId,
               versionId: result.savedVersion._id.toString(),

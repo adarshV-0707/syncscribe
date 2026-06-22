@@ -1,6 +1,7 @@
 import jwt from "jsonwebtoken";
 import { User } from "../models/user.model.js";
 
+// Authenticates socket connections and attaches the user identity to the socket.
 export const socketAuthMiddleware = async (socket, next) => {
   try {
     const raw = socket.handshake.auth?.token;
@@ -14,7 +15,7 @@ export const socketAuthMiddleware = async (socket, next) => {
     const decoded = jwt.verify(token, process.env.ACCESS_TOKEN_SECRET);
 
     const user = await User.findById(decoded._id)
-      .select("_id username email")
+      .select("_id username ")
       .lean();
 
     if (!user) {

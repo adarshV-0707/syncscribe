@@ -5,6 +5,7 @@ import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../services/cloudinary.service.js";
 import jwt from "jsonwebtoken";
 
+// Creates new access and refresh tokens and stores the refresh token for rotation.
 const generateAccessAndRefreshTokens = async (userId) => {
   try {
     const user = await User.findById(userId);
@@ -21,6 +22,7 @@ const generateAccessAndRefreshTokens = async (userId) => {
   }
 };
 
+// Registers a new user after validating uniqueness and uploading avatar.
 const registerUser = asyncHandler(async (req, res) => {
   const { name, email, username, password } = req.body;
   if (
@@ -71,6 +73,7 @@ const registerUser = asyncHandler(async (req, res) => {
     .json(new ApiResponse(201, createdUser, "User registered successfully"));
 });
 
+// Logs in a user and returns tokens in both cookies and response body.
 const loginUser = asyncHandler(async (req, res) => {
   const { email, username, password } = req.body;
   if (!username && !email) {
@@ -119,6 +122,7 @@ const loginUser = asyncHandler(async (req, res) => {
     );
 });
 
+// Logs out the user by clearing stored refresh token and auth cookies.
 const logoutUser = asyncHandler(async (req, res) => {
   await User.findByIdAndUpdate(
     req.user._id,
@@ -145,6 +149,7 @@ const logoutUser = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, {}, "User logged out successfully"));
 });
 
+// Rotates a valid refresh token into a new access and refresh token pair.
 const refreshAccessToken = asyncHandler(async (req, res) => {
   const incomingRefreshToken =
     req.cookies.refreshToken || req.body.refreshToken;
@@ -196,6 +201,7 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
   }
 });
 
+// Changes password after verifying the old password.
 const changeCurrentPassword = asyncHandler(async (req, res) => {
   const { oldPassword, newPassword } = req.body;
   if (!oldPassword || !newPassword) {
@@ -221,12 +227,14 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, {}, "Password changed successfully"));
 });
 
+
 const getCurrentUser = asyncHandler(async (req, res) => {
   return res
     .status(200)
     .json(new ApiResponse(200, req.user, "current user fetched successfully"));
 });
 
+// Updates basic account details after checking email uniqueness.
 const updateAccountDetails = asyncHandler(async (req, res) => {
   const { name, email } = req.body;
 
@@ -259,6 +267,7 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, user, "Account details updated successfully"));
 });
 
+// Uploads and replaces the current user's avatar.
 const updateUserAvatar = asyncHandler(async (req, res) => {
   const avatarLocalPath = req.file?.path;
 
@@ -287,6 +296,7 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, user, "Avatar updated successfully"));
 });
 
+// Returns a public user profile by username.
 const getUserProfile = asyncHandler(async (req, res) => {
   const { username } = req.params;
 

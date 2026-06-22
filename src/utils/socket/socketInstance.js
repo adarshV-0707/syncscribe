@@ -1,5 +1,6 @@
 let io = null;
 
+// Stores the Socket.IO server instance for use outside the main server file.
 export const setIO = (ioInstance) => {
   io = ioInstance;
 };

@@ -14,7 +14,6 @@ router.use(verifyJWT);
 router.get("/:documentId/versions", listVersions);
 
 // Owner-only contribution summary
-// Must come before /:versionId route
 router.get("/:documentId/versions/contributions", getContributions);
 
 // Single version content reconstruction
