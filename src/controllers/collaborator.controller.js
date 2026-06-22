@@ -1,14 +1,51 @@
-import mongoose from "mongoose";
+
 import { asyncHandler } from "../utils/AsyncHandler.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { Document } from "../models/document.model.js";
 import { Collaborator } from "../models/collaborator.model.js";
-import { User } from "../models/user.model.js";
 import { assertDocumentAccess } from "../utils/assertDocumentAccess.js";
 
+// Removes a deleted collaborator's active sockets from the document room.
+const removeUserSocketsFromDocumentRoom = (io, documentId, userId) => {
+  const roomId = documentId.toString();
+  const targetUserId = userId.toString();
 
+  const users = activeUsers.get(roomId) || [];
 
+  const removedUsers = users.filter((user) => user.userId === targetUserId);
+  const updatedUsers = users.filter((user) => user.userId !== targetUserId);
+
+  for (const user of removedUsers) {
+    const targetSocket = io.sockets.sockets.get(user.socketId);
+
+    if (targetSocket) {
+      targetSocket.leave(roomId);
+
+      if (targetSocket.currentDocId === roomId) {
+        targetSocket.currentDocId = null;
+      }
+
+      targetSocket.emit("document_access_removed", {
+        docId: roomId,
+        message: "Your access to this document has been removed.",
+      });
+    }
+  }
+
+  if (updatedUsers.length === 0) {
+    activeUsers.delete(roomId);
+  } else {
+    activeUsers.set(roomId, updatedUsers);
+  }
+
+  io.to(roomId).emit("active_users", {
+    docId: roomId,
+    users: updatedUsers,
+  });
+};
+
+// Removes a collaborator and stops their existing sockets from receiving live updates.
 const removeCollaborator = asyncHandler(async (req, res) => {
   const { documentId, collaboratorId } = req.params;
 
@@ -25,11 +62,20 @@ const removeCollaborator = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Collaborator not found");
   }
 
+  try {
+    const io = getIO();
+    removeUserSocketsFromDocumentRoom(io, documentId, collaborator.user);
+  }
+  catch (error) {
+    console.error("Failed to remove collaborator sockets:", error);
+  }
+
   return res
     .status(200)
     .json(new ApiResponse(200, {}, "Collaborator removed successfully"));
 });
 
+// Lists all collaborators for an owner-managed document.
 const getCollaborators = asyncHandler(async (req, res) => {
   const { documentId } = req.params;
 
@@ -55,6 +101,7 @@ const getCollaborators = asyncHandler(async (req, res) => {
   );
 });
 
+// Allows a collaborator to leave a shared document.
 const leaveDocument = asyncHandler(async (req, res) => {
   const { documentId } = req.params;
   const userId = req.user._id;
@@ -86,6 +133,7 @@ const leaveDocument = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, {}, "You have left the document successfully"));
 });
 
+// Updates a collaborator's role after owner authorization.
 const updateCollaboratorRole = asyncHandler(async (req, res) => {
   const { documentId, userId } = req.params;
   const { newRole } = req.body;
