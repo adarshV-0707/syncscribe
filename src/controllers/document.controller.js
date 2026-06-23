@@ -451,11 +451,9 @@ const permanentDeleteDocument = asyncHandler(async (req, res) => {
 
   try {
     // Dependents first — all in parallel, same session
-    await Promise.all([
-      Version.deleteMany({ documentId }, { session }),
-      Collaborator.deleteMany({ document: documentId }, { session }),
-      InviteLink.deleteMany({ document: documentId }, { session }),
-    ]);
+    await Version.deleteMany({ documentId }, { session });
+    await Collaborator.deleteMany({ document: documentId }, { session });
+    await InviteLink.deleteMany({ document: documentId }, { session });
 
     // Parent last — only after dependents are gone
     const deletedDocument = await Document.findOneAndDelete(
