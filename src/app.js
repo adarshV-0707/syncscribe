@@ -28,9 +28,9 @@ app.use(express.static("public"));
 app.use(cookieParser());
 
 app.use("/api/v1/users", userRouter);
+app.use("/api/v1/documents", inviteLinkRouter);
 app.use("/api/v1/documents", documentRouter);
 app.use("/api/v1/documents", collaboratorRouter);
-app.use("/api/v1/documents", inviteLinkRouter);
 app.use("/api/v1/documents", versionRouter);
 
 app.use((err, req, res, next) => {
