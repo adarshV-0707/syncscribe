@@ -31,8 +31,9 @@ router.get("/deleted", getDeletedDocuments);
 router
   .route("/:documentId")
   .get(getDocument)
-  .patch(updateDocumentInfo)
   .delete(deleteDocument);
+
+  router.patch("/:documentId/info", updateDocumentInfo);
 
   
 // STATE TRANSITIONS
