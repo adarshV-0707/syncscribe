@@ -1,0 +1,983 @@
+{
+  "info": {
+    "name": "SyncScribe Backend API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "registerOwner",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "name",
+                  "value": "Owner User",
+                  "type": "text",
+                  "uuid": "387b6b76-f463-43b4-8299-96d258147485"
+                },
+                {
+                  "key": "username",
+                  "value": "owneruser",
+                  "type": "text",
+                  "uuid": "9eeccb63-735e-4f08-b875-72c2c6a5f413"
+                },
+                {
+                  "key": "email",
+                  "value": "owner@example.com",
+                  "type": "text",
+                  "uuid": "2d265f3e-a152-4698-a8f0-a6567390a08f"
+                },
+                {
+                  "key": "password",
+                  "value": "Password@123",
+                  "type": "text",
+                  "uuid": "8bfc3663-8b6e-4775-813b-6241845a9418"
+                },
+                {
+                  "key": "avatar",
+                  "type": "file",
+                  "uuid": "aedd61e5-cdc0-4145-a782-f7ad57283260",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "register"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "loginOwner",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();\r",
+                  "\r",
+                  "pm.environment.set(\"accessToken\", json.data.accessToken);\r",
+                  "pm.environment.set(\"ownerAccessToken\", json.data.accessToken);\r",
+                  "pm.environment.set(\"ownerId\", json.data.user._id);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"owner@example.com\",\n  \"password\": \"Password@123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "registerCollaborator",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "name",
+                  "value": "Collaborator User",
+                  "type": "text",
+                  "uuid": "387b6b76-f463-43b4-8299-96d258147485"
+                },
+                {
+                  "key": "username",
+                  "value": "collabuser",
+                  "type": "text",
+                  "uuid": "9eeccb63-735e-4f08-b875-72c2c6a5f413"
+                },
+                {
+                  "key": "email",
+                  "value": "collab@example.com",
+                  "type": "text",
+                  "uuid": "2d265f3e-a152-4698-a8f0-a6567390a08f"
+                },
+                {
+                  "key": "password",
+                  "value": "Password@123",
+                  "type": "text",
+                  "uuid": "8bfc3663-8b6e-4775-813b-6241845a9418"
+                },
+                {
+                  "key": "avatar",
+                  "type": "file",
+                  "uuid": "aedd61e5-cdc0-4145-a782-f7ad57283260",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "register"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "loginCollaborator",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();\r",
+                  "\r",
+                  "pm.environment.set(\"accessToken\", json.data.accessToken);\r",
+                  "pm.environment.set(\"collabAccessToken\", json.data.accessToken);\r",
+                  "pm.environment.set(\"collabUserId\", json.data.user._id);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"collab@example.com\",\n  \"password\": \"Password@123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "login"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "currentUser",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/current-user",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "current-user"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "changePassword",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"oldPassword\": \"Owner@1234\",\r\n  \"newPassword\": \"Owner@123\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/change-password",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "change-password"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "updateAccount",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"name\": \"Owner User Updated\",\r\n  \"email\": \"owner@example.com\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/update-account",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "update-account"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "getProfile",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/profile/owneruser",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "profile",
+                "owneruser"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "updateAvatar",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "avatar",
+                  "type": "file",
+                  "uuid": "6da67307-34e4-4ec0-ac40-d6ee017955a7",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/users/avatar",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "avatar"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "refreshToken",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();\r",
+                  "\r",
+                  "pm.environment.set(\"accessToken\", json.data.accessToken);\r",
+                  "pm.environment.set(\"ownerAccessToken\", json.data.accessToken);\r",
+                  "\r",
+                  "console.log(\"Refreshed access token saved\");"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/refresh-token",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "refresh-token"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "logoutUser",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/users/logout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "users",
+                "logout"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Documents",
+      "item": [
+        {
+          "name": "createDocument",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();\r",
+                  "\r",
+                  "pm.environment.set(\"documentId\", json.data._id);\r",
+                  "pm.environment.set(\"baseVersionNumber\", json.data.latestVersion);\r",
+                  "\r",
+                  "console.log(\"Document ID saved:\", json.data._id);\r",
+                  "console.log(\"Base version saved:\", json.data.latestVersion);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"title\": \"SyncScribe Test Document\",\r\n  \"description\": \"Testing document APIs from Postman\"\r\n}\r\n",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/documents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "getDocument",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{documentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{documentId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "getOwnedActiveDocuments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "searchDocument",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/search?query=SyncScrib",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "SyncScrib"
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "updateDocumentInfo",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"newTitle\": \"SyncScribe Updated Test Document\",\r\n  \"newDescription\": \"Updated from Postman testing\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{documentId}}/info",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{documentId}}",
+                "info"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "getSharedDocuments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/shared",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "shared"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "getDeletedDocuments",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/deleted",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "deleted"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "deleteDocument",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{documentId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{documentId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "restoreDocument",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{documentId}}/restore",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{documentId}}",
+                "restore"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "permanentDeleteDocument",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{documentId}}/purge",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{documentId}}",
+                "purge"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "InviteLinks",
+      "item": [
+        {
+          "name": "createInviteLink",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();\r",
+                  "\r",
+                  "pm.environment.set(\"inviteToken\", json.data.token);\r",
+                  "pm.environment.set(\"inviteLinkId\", json.data._id);"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"role\": \"editor\",\r\n  \"maxUses\": 10\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{documentId}}/invite-links",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{documentId}}",
+                "invite-links"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "getInviteLinks",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{documentId}}/invite-links",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{documentId}}",
+                "invite-links"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "previewInviteLink",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/join/{{inviteToken}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "join",
+                "{{inviteToken}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "joinViaInviteLink",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/join/{{inviteToken}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "join",
+                "{{inviteToken}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "revokeInviteLink",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{documentId}}/invite-links/{{inviteLinkId}}/revoke",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{documentId}}",
+                "invite-links",
+                "{{inviteLinkId}}",
+                "revoke"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Collaborator",
+      "item": [
+        {
+          "name": "getCollaborators",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();\r",
+                  "\r",
+                  "if (json.data && json.data.length > 0) {\r",
+                  "  pm.environment.set(\"collaboratorId\", json.data[0]._id);\r",
+                  "}"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{documentId}}/collaborators",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{documentId}}",
+                "collaborators"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "updateCollaboratorRole",
+          "request": {
+            "method": "PATCH",
+            "header": [],
+            "body": {
+              "mode": "raw",
+              "raw": "{\r\n  \"newRole\": \"editor\"\r\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{documentId}}/collaborators/{{collabUserId}}/role",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{documentId}}",
+                "collaborators",
+                "{{collabUserId}}",
+                "role"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "removeCollaborator",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{documentId}}/collaborators/{{collaboratorId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{documentId}}",
+                "collaborators",
+                "{{collaboratorId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "leaveDocument",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{documentId}}/leave",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{documentId}}",
+                "leave"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Versions",
+      "item": [
+        {
+          "name": "listVersions",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();\r",
+                  "\r",
+                  "if (json.data?.versions?.length > 0) {\r",
+                  "  pm.environment.set(\"versionId\", json.data.versions[0]._id);\r",
+                  "}"
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{documentId}}/versions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{documentId}}",
+                "versions"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "getVersion",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{documentId}}/versions/{{versionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{documentId}}",
+                "versions",
+                "{{versionId}}"
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "getContributions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/{{documentId}}/versions/contributions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "documents",
+                "{{documentId}}",
+                "versions",
+                "contributions"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "packages": {},
+        "requests": {},
+        "exec": [
+          ""
+        ]
+      }
+    }
+  ]
+}

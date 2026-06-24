@@ -140,3 +140,6 @@ vite.config.ts.timestamp-*
 
 public/temp/*
 !public/temp/.gitkeep
+
+# Postman local environments may contain JWTs, invite tokens, and generated IDs
+postman/*.postman_environment.json
