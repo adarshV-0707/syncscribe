@@ -5,6 +5,7 @@ import { Document } from "../models/document.model.js";
 import { Collaborator } from "../models/collaborator.model.js";
 import { assertDocumentAccess } from "../utils/assertDocumentAccess.js";
 import { getIO } from "../utils/socket/socketInstance.js";
+import { activeUsers } from "../utils/socket/activeUsersStore.js";
 
 // Removes a deleted collaborator's active sockets from the document room.
 const removeUserSocketsFromDocumentRoom = (io, documentId, userId) => {
