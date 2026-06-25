@@ -7,8 +7,16 @@ import { assertDocumentAccess } from "../utils/assertDocumentAccess.js";
 import { getIO } from "../utils/socket/socketInstance.js";
 import { activeUsers } from "../utils/socket/activeUsersStore.js";
 
-// Removes a deleted collaborator's active sockets from the document room.
-const removeUserSocketsFromDocumentRoom = (io, documentId, userId) => {
+// Removes a user's active sockets from a document room.
+const removeUserSocketsFromDocumentRoom = (
+  io,
+  documentId,
+  userId,
+  {
+    eventName = "document_access_removed",
+    message = "Your access to this document has been removed.",
+  } = {},
+) => {
   const roomId = documentId.toString();
   const targetUserId = userId.toString();
 
@@ -27,9 +35,9 @@ const removeUserSocketsFromDocumentRoom = (io, documentId, userId) => {
         targetSocket.currentDocId = null;
       }
 
-      targetSocket.emit("document_access_removed", {
+      targetSocket.emit(eventName, {
         docId: roomId,
-        message: "Your access to this document has been removed.",
+        message,
       });
     }
   }
@@ -65,9 +73,9 @@ const removeCollaborator = asyncHandler(async (req, res) => {
 
   try {
     const io = getIO();
+
     removeUserSocketsFromDocumentRoom(io, documentId, collaborator.user);
-  }
-  catch (error) {
+  } catch (error) {
     console.error("Failed to remove collaborator sockets:", error);
   }
 
@@ -127,6 +135,17 @@ const leaveDocument = asyncHandler(async (req, res) => {
 
   if (!collaborator) {
     throw new ApiError(404, "You are not a collaborator of this document");
+  }
+
+ try {
+  const io = getIO();
+
+  removeUserSocketsFromDocumentRoom(io, documentId, userId, {
+    eventName: "document_access_removed",
+    message: "You have left this document.",
+  });
+  } catch (error) {
+      console.error("Failed to remove leaving collaborator sockets:", error);
   }
 
   return res
